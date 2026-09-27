@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- UnityEngine bindings (IUnityApi implementation, reflection binders for optional modules). -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>UnityRuntimeAnalysisAgent.Unity</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
+    <!-- Compile-only baseline Unity API (see Directory.Packages.props). The game supplies UnityEngine at runtime. -->
+    <PackageReference Include="UnityEngine.Modules" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

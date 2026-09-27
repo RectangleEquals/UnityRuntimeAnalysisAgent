@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- All agent logic. No UnityEngine and no loader references (enforced by an architecture test). -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>UnityRuntimeAnalysisAgent.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile-only: HarmonyX is provided by the loader at runtime. -->
+    <PackageReference Include="HarmonyX" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UnityRuntimeAnalysisAgent.Core.Tests" />
+  </ItemGroup>
+</Project>

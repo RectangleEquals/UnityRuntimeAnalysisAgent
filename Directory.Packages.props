@@ -1,0 +1,33 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Pin transitive versions too (e.g. BepInEx.Core pulls HarmonyX 2.7.0; we pin 2.9.0). -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Compile-only references for shipped assemblies (provided by the game/loader at runtime)">
+    <!-- BepInEx 5 API. Runtime is the installed BepInEx 5.4.23.x; the newest 5.x package on the BepInEx feed is 5.4.21. -->
+    <PackageVersion Include="BepInEx.Core" Version="5.4.21" />
+    <!-- MUST match the 0Harmony.dll shipped with BepInEx 5.4.23.5 (2.9.0): compiling against a newer HarmonyX can bind to
+         members the loader's copy doesn't have. Transitive pinning also lifts BepInEx.Core's HarmonyX 2.7.0 to this version. See docs/CONTRIBUTING.md. -->
+    <PackageVersion Include="HarmonyX" Version="2.9.0" />
+    <!-- Oldest supported Unity API surface. APIs compiled against it bind by name on newer players.
+         Never use UnityEngine.Input directly: it moved to InputLegacyModule in 2019.1 (enforced by ArchitectureTests; see docs/CONTRIBUTING.md). -->
+    <PackageVersion Include="UnityEngine.Modules" Version="2018.1.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Build-time only">
+    <PackageVersion Include="PolySharp" Version="1.16.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Tests and tools">
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="Verify.XunitV3" Version="33.1.5" />
+    <PackageVersion Include="dnlib" Version="4.5.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageVersion Include="PublicApiGenerator" Version="11.5.4" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
+  </ItemGroup>
+</Project>

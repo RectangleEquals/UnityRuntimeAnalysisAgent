@@ -1,0 +1,54 @@
+# Build output
+bin/
+obj/
+dist/
+artifacts/
+TestResults/
+*.binlog
+
+# Crash dumps, logs and merge leftovers
+*.stackdump
+*.dmp
+*.log
+*.orig
+*.rej
+
+# Test and coverage output
+*.trx
+coverage*.xml
+*.coverage
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Secrets (never commit)
+.env
+*.pfx
+*.snk
+
+# IDE / user files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Machine-specific settings (never commit)
+Directory.Build.local.props
+*.local.props
+*.local.json
+tests/**/local*.json
+
+# Fixture game (Unity project) generated folders
+tests/FixtureGame/[Ll]ibrary/
+tests/FixtureGame/[Tt]emp/
+tests/FixtureGame/[Ll]ogs/
+tests/FixtureGame/[Oo]bj/
+tests/FixtureGame/[Bb]uild/
+tests/FixtureGame/[Bb]uilds/
+tests/FixtureGame/[Uu]ser[Ss]ettings/
+tests/FixtureGame/*.csproj
+tests/FixtureGame/*.sln

@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Replays the shared protocol fixtures (external/protocol) once the submodule exists. -->
+</Project>

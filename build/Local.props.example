@@ -1,0 +1,16 @@
+<Project>
+  <!--
+    Copy this file to the repository root as "Directory.Build.local.props" (git-ignored) and fill in your own paths.
+    Nothing here is required to build or run the unit tests.
+  -->
+  <PropertyGroup>
+    <!-- Unity editor used to build the fixture game (tests/FixtureGame), e.g. ...\Editor\Unity.exe -->
+    <UnityEditorPath></UnityEditorPath>
+
+    <!-- Output folder for the built fixture game player. -->
+    <FixtureBuildDir></FixtureBuildDir>
+
+    <!-- Developer-only: game folder that the optional DeployToGame target copies the built plugin into. -->
+    <GameDir></GameDir>
+  </PropertyGroup>
+</Project>

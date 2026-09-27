@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- In-game overlay (IMGUI renderer, skin, arrow, input blocker, picker). Optional at runtime. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>UnityRuntimeAnalysisAgent.Overlay</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
+    <PackageReference Include="UnityEngine.Modules" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

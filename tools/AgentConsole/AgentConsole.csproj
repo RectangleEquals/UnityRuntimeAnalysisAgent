@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Developer console client for the agent protocol (not implemented yet). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>UnityRuntimeAnalysisAgent.AgentConsole</RootNamespace>
+  </PropertyGroup>
+</Project>
