@@ -14,7 +14,8 @@ rules that keep the plugin working across many Unity games. The project is pre-r
 | `src/UnityRuntimeAnalysisAgent.BepInEx5` | The BepInEx 5 plugin entry point that wires everything together. |
 | `tests/*.Core.Tests`, `*.Api.Tests`, `*.Protocol.Tests` | Unit tests. Run anywhere, no game needed. |
 | `tests/*.Integration` | Tests against a real Unity player. Run locally only (see below). |
-| `tools/AgentConsole` | A developer console for talking to a running agent. |
+| `tools/AgentClient` | A small client library: connect, authenticate, send requests, receive events. |
+| `tools/AgentConsole` | A developer console for talking to a running agent (built on `AgentClient`). |
 | `external/protocol` | Git submodule with the shared protocol (schemas, fixtures, the `UnityLudometry.Protocol` package). See [its README](../external/README.md). |
 
 ## Building and testing
@@ -51,9 +52,34 @@ UnityLudometryMCP repository through the `external/protocol` submodule, pinned t
 
 - **The protocol is never changed here.** If agent work needs a protocol change, open an issue or a pull request in
   the UnityLudometryMCP repository; once a new protocol tag exists, bump the pin (see `external/README.md`).
-- `tests/UnityRuntimeAnalysisAgent.Protocol.Tests` replays every fixture of the pinned protocol, and grows handler
-  conformance checks as features land.
+- `tests/UnityRuntimeAnalysisAgent.Protocol.Tests` replays every fixture of the pinned protocol, and sends the
+  fixture requests of each implemented feature to a live in-process agent: the responses must match the fixtures'
+  outcomes and validate against the schemas.
 - A build without the submodule stops with a message telling you to run `git submodule update --init --recursive`.
+
+## Talking to a running agent
+
+The agent writes a discovery file, `agent-<pid>.json`, into the directory set by `Discovery.ProvidersDir` in its
+config. The file holds the connection details and the session token, and is deleted when the game exits.
+`AgentConsole` connects with it:
+
+```
+dotnet run --project tools/AgentConsole -- --discovery <providers-dir>/agent-<pid>.json
+```
+
+Without a command it reads commands from the console:
+
+| Command | Does |
+|---|---|
+| `info` | Shows `agent.info` |
+| `send <method> [<json> \| @file]` | Sends a request and prints the response |
+| `subscribe <kind>[,<kind>...]` | Subscribes to events; they're printed as they arrive |
+| `script <file>` | Runs one request per line (`<method> <json>`; `#` starts a comment) |
+| `wait <ms>` | Waits, printing events meanwhile |
+| `quit` | Exits |
+
+A command after the options runs once and exits (`... --discovery <file> send ping`). `--pipe <name> --token <hex>`
+or `--tcp <port> --token <hex>` connect without a discovery file, and `--raw` prints compact JSON.
 
 ## Compatibility rules
 

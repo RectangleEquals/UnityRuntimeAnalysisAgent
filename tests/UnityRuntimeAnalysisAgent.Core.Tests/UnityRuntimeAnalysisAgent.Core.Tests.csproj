@@ -4,5 +4,7 @@
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Api\UnityRuntimeAnalysisAgent.Api.csproj" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Unity\UnityRuntimeAnalysisAgent.Unity.csproj" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Overlay\UnityRuntimeAnalysisAgent.Overlay.csproj" />
+    <ProjectReference Include="..\..\tools\AgentClient\AgentClient.csproj" />
+    <ProjectReference Include="..\..\tools\AgentConsole\AgentConsole.csproj" />
   </ItemGroup>
 </Project>

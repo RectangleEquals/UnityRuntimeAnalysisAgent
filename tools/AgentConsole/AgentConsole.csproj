@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Developer console client for the agent protocol (not implemented yet). -->
+  <!-- Developer console for the agent protocol: connect, send requests, subscribe to events, run scripts. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
@@ -7,4 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>UnityRuntimeAnalysisAgent.AgentConsole</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentClient\AgentClient.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UnityRuntimeAnalysisAgent.Core.Tests" />
+  </ItemGroup>
 </Project>

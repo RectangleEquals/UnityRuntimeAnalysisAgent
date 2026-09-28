@@ -9,6 +9,6 @@ public sealed class ProtocolPinTests
     {
         // Update this deliberately together with the external/protocol submodule pin: a protocol version change can
         // change the wire format, and before 1.0 the orchestrator must match major.minor exactly.
-        Assert.Equal("0.1", AgentInfo.ProtocolVersionText);
+        Assert.Equal("0.1", AgentIdentity.ProtocolVersionText);
     }
 }

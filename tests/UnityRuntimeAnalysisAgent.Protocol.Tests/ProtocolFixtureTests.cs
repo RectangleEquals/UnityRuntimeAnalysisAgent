@@ -2,7 +2,7 @@ using System.Reflection;
 using UnityLudometry.Protocol;
 using UnityLudometry.Protocol.Conformance;
 using UnityLudometry.Protocol.Messages;
-using AgentIdentity = UnityRuntimeAnalysisAgent.Core.AgentInfo;
+using UnityRuntimeAnalysisAgent.Core;
 
 namespace UnityRuntimeAnalysisAgent.Protocol.Tests;
 

@@ -20,7 +20,7 @@ public sealed class ArchitectureTests
     [Fact]
     public void Core_does_not_reference_UnityEngine_or_any_loader()
     {
-        var forbidden = typeof(AgentInfo).Assembly.GetReferencedAssemblies()
+        var forbidden = typeof(AgentIdentity).Assembly.GetReferencedAssemblies()
             .Select(a => a.Name!)
             .Where(n => n.StartsWith("UnityEngine", StringComparison.Ordinal)
                      || n.StartsWith("BepInEx", StringComparison.Ordinal)
@@ -33,7 +33,7 @@ public sealed class ArchitectureTests
     [Fact]
     public void Core_references_only_the_framework_the_protocol_package_and_compile_only_HarmonyX()
     {
-        var references = typeof(AgentInfo).Assembly.GetReferencedAssemblies().Select(a => a.Name!).ToArray();
+        var references = typeof(AgentIdentity).Assembly.GetReferencedAssemblies().Select(a => a.Name!).ToArray();
         var allowed = AllowedFrameworkAssemblies.Concat(["UnityLudometry.Protocol", "0Harmony"]).ToArray();
 
         Assert.All(references, name => Assert.Contains(name, allowed));
@@ -58,7 +58,7 @@ public sealed class ArchitectureTests
     [Fact]
     public void Shipped_assemblies_target_netstandard20()
     {
-        foreach (var assembly in new[] { typeof(AgentInfo).Assembly, typeof(ApiInfo).Assembly, typeof(ProtocolVersion).Assembly })
+        foreach (var assembly in new[] { typeof(AgentIdentity).Assembly, typeof(ApiInfo).Assembly, typeof(ProtocolVersion).Assembly })
         {
             var framework = assembly.GetCustomAttribute<System.Runtime.Versioning.TargetFrameworkAttribute>();
             Assert.Equal(".NETStandard,Version=v2.0", framework?.FrameworkName);
