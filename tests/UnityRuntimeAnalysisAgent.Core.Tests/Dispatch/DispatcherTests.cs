@@ -79,13 +79,14 @@ public sealed class DispatcherTests : IDisposable
     [Fact]
     public void Errors_are_mapped_and_agent_defects_logged()
     {
+        // An explicit timeout: this test method's short default is for the timeout test.
         var peer = _test.Connect();
-        var game = peer.Call(Methods.LogsTail, "{\"how\":\"game\"}").Error!;
+        var game = peer.AwaitResponse(peer.Send(Methods.LogsTail, "{\"how\":\"game\"}", timeoutMs: 30_000), 30_000).Error!;
         Assert.Equal(ErrorCodes.GameException, game.Code);
         Assert.Equal("System.InvalidOperationException", ((JsonString)game.Data!["exceptionType"]!).Value);
-        Assert.Equal(ErrorCodes.NotFound, peer.Call(Methods.LogsTail, "{\"how\":\"protocol\"}").Error!.Code);
+        Assert.Equal(ErrorCodes.NotFound, peer.AwaitResponse(peer.Send(Methods.LogsTail, "{\"how\":\"protocol\"}", timeoutMs: 30_000), 30_000).Error!.Code);
 
-        var bug = peer.Call(Methods.LogsTail, "{\"how\":\"bug\"}").Error!;
+        var bug = peer.AwaitResponse(peer.Send(Methods.LogsTail, "{\"how\":\"bug\"}", timeoutMs: 30_000), 30_000).Error!;
         Assert.Equal(ErrorCodes.Internal, bug.Code);
         var stack = ((JsonString)bug.Data!["stack"]!).Value;
         Assert.True(stack.Split('\n').Length <= AgentErrors.StackLines + 1);

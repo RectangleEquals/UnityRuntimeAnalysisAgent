@@ -8,6 +8,7 @@ using UnityLudometry.Protocol.Json;
 using UnityLudometry.Protocol.Messages;
 using UnityRuntimeAnalysisAgent.Core.Abstractions;
 using UnityRuntimeAnalysisAgent.Core.Discovery;
+using UnityRuntimeAnalysisAgent.Core.Data;
 using UnityRuntimeAnalysisAgent.Core.Dispatch;
 using UnityRuntimeAnalysisAgent.Core.Jobs;
 using UnityRuntimeAnalysisAgent.Core.Runtime;
@@ -68,6 +69,7 @@ public sealed class AgentHost : IDisposable
         Events.EmittedKinds.Add(EventKinds.JobProgress);
         Events.EmittedKinds.Add(EventKinds.JobFinished);
         Jobs = new JobManager(_config.MaxConcurrentJobs, Events, Pump, Log);
+        Data = new DataModel(unity ?? HeadlessUnity.Instance, _config.MaxHandles);
         Dispatcher = new Dispatcher(Modes, Capabilities, Pump, Activity, Log);
         Session = new SessionHandler(Token, Dispatcher, BuildAgentInfo);
         Dispatcher.Register(new SessionService(this));
@@ -75,11 +77,15 @@ public sealed class AgentHost : IDisposable
         Dispatcher.Register(new ActivityService(Activity));
         Dispatcher.Register(new BatchService(Dispatcher, Pump));
         Dispatcher.Register(new DiagnosticsService(this));
+        Dispatcher.Register(new DataServices(Data, Pump));
         foreach (var warning in _config.Warnings)
         {
             Log.Warning(warning);
         }
     }
+
+    /// <summary>The data model: anchors, handles, variables, refs and the value codec.</summary>
+    public DataModel Data { get; }
 
     /// <summary>The session token of this start.</summary>
     public SessionToken Token { get; }
@@ -206,6 +212,7 @@ public sealed class AgentHost : IDisposable
                 connection.Close("agent shutdown");
             }
         });
+        Step("release handles and variables", Data.Dispose);
         Step("delete the discovery file", _discovery.Dispose);
         Step("stop the watchdog", _watchdog.Dispose);
         Step("destroy the pump host", Pump.Stop);
@@ -391,5 +398,15 @@ public sealed class AgentHost : IDisposable
         public FrameTime ReadFrameTime() => default;
 
         public bool IsDestroyed(object unityObject) => unityObject is null;
+
+        public UnityObjectFacts? Describe(object unityObject) => null;
+
+        public object? FindGameObject(string path, string? scene) => null;
+
+        public object? GetComponent(object gameObjectOrComponent, Type componentType) => null;
+
+        public object? FindChild(object gameObjectOrComponent, string path) => null;
+
+        public SceneAddress? Locate(object unityObject) => null;
     }
 }

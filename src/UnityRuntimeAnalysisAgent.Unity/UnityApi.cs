@@ -110,7 +110,118 @@ public sealed class UnityApi : IUnityApi
     public FrameTime ReadFrameTime() => new(Time.frameCount, Time.time, Time.unscaledTime, Time.realtimeSinceStartup, Time.timeScale, Time.deltaTime);
 
     /// <inheritdoc />
-    public bool IsDestroyed(object unityObject) => unityObject is UnityEngine.Object o ? o == null : unityObject is null;
+    public bool IsDestroyed(object unityObject)
+    {
+        if (unityObject is not UnityEngine.Object o)
+        {
+            return unityObject is null;
+        }
+
+        // Unity's == may call into the engine, which is only safe on the main thread. Elsewhere, the native pointer Unity
+        // caches on every live object (cleared when it's destroyed) tells the same without touching the engine.
+        if (OnMainThread || CachedPtr is null)
+        {
+            return o == null;
+        }
+
+        return (IntPtr)CachedPtr.GetValue(o) == IntPtr.Zero;
+    }
+
+    /// <inheritdoc />
+    public UnityObjectFacts? Describe(object unityObject) =>
+        unityObject is UnityEngine.Object o && o != null ? new UnityObjectFacts(o.GetInstanceID(), o.name) : null;
+
+    /// <inheritdoc />
+    public object? FindGameObject(string path, string? scene)
+    {
+        var names = path.Split('/');
+        foreach (var root in Roots(scene))
+        {
+            if (root.name != names[0])
+            {
+                continue;
+            }
+
+            var found = names.Length == 1 ? root.transform : root.transform.Find(string.Join("/", names, 1, names.Length - 1));
+            if (found != null)
+            {
+                return found.gameObject;
+            }
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    public object? GetComponent(object gameObjectOrComponent, Type componentType)
+    {
+        var component = GameObjectOf(gameObjectOrComponent)?.GetComponent(componentType);
+        return component == null ? null : component;
+    }
+
+    /// <inheritdoc />
+    public object? FindChild(object gameObjectOrComponent, string path)
+    {
+        var child = GameObjectOf(gameObjectOrComponent)?.transform.Find(path);
+        return child == null ? null : child.gameObject;
+    }
+
+    /// <inheritdoc />
+    public SceneAddress? Locate(object unityObject)
+    {
+        var go = GameObjectOf(unityObject);
+        if (go == null || !go.scene.IsValid())
+        {
+            return null;
+        }
+
+        var names = new System.Collections.Generic.List<string>();
+        for (var t = go.transform; t != null; t = t.parent)
+        {
+            names.Insert(0, t.name);
+        }
+
+        return new SceneAddress(go.scene.buildIndex == -1 && go.scene.name == DontDestroyOnLoadScene ? "ddol" : go.scene.name, string.Join("/", names.ToArray()));
+    }
+
+    private const string DontDestroyOnLoadScene = "DontDestroyOnLoad";
+
+    private static readonly System.Reflection.FieldInfo? CachedPtr =
+        typeof(UnityEngine.Object).GetField("m_CachedPtr", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    private static GameObject? GameObjectOf(object value) => value switch
+    {
+        GameObject go when go != null => go,
+        Component c when c != null => c.gameObject,
+        _ => null,
+    };
+
+    // Scene roots to search: one scene by name (or DontDestroyOnLoad, reached through the agent's own host), or all of them.
+    private System.Collections.Generic.IEnumerable<GameObject> Roots(string? scene)
+    {
+        if (scene is null || scene != "ddol")
+        {
+            for (var i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var loaded = SceneManager.GetSceneAt(i);
+                if (loaded.isLoaded && (scene is null || loaded.name == scene))
+                {
+                    foreach (var root in loaded.GetRootGameObjects())
+                    {
+                        yield return root;
+                    }
+                }
+            }
+        }
+
+        if ((scene is null || scene == "ddol") && _host != null)
+        {
+            foreach (var root in _host.scene.GetRootGameObjects())
+            {
+                yield return root;
+            }
+        }
+    }
 
     /// <summary>Destroys the pump host now, like a game destroying stray objects would (for the watchdog self-test).</summary>
     public void DestroyHostForTest() => DestroyHost();

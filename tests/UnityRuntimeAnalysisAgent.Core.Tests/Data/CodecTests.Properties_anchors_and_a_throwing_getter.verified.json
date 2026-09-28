@@ -1,0 +1,65 @@
+﻿{
+  "t": "object",
+  "h": 1,
+  "type": {
+    "mvid": "{mvid}",
+    "token": 33554435,
+    "name": "Zoo.Plain"
+  },
+  "fields": {
+    "number": 42,
+    "text": "hello",
+    "next": null,
+    "Auto": 7
+  },
+  "props": {
+    "Computed": 84,
+    "Throws": {
+      "error": {
+        "code": "GAME_EXCEPTION",
+        "message": "boom",
+        "data": {
+          "exceptionType": "System.InvalidOperationException"
+        }
+      }
+    },
+    "Text": "hello"
+  },
+  "anchors": {
+    "number": {
+      "mvid": "{mvid}",
+      "token": 67108867,
+      "name": "Zoo.Plain::number"
+    },
+    "text": {
+      "mvid": "{mvid}",
+      "token": 67108868,
+      "name": "Zoo.Plain::text"
+    },
+    "next": {
+      "mvid": "{mvid}",
+      "token": 67108869,
+      "name": "Zoo.Plain::next"
+    },
+    "Auto": {
+      "mvid": "{mvid}",
+      "token": 67108871,
+      "name": "Zoo.Plain::<Auto>k__BackingField"
+    },
+    "Computed": {
+      "mvid": "{mvid}",
+      "token": 385875971,
+      "name": "Zoo.Plain::Computed"
+    },
+    "Throws": {
+      "mvid": "{mvid}",
+      "token": 385875972,
+      "name": "Zoo.Plain::Throws"
+    },
+    "Text": {
+      "mvid": "{mvid}",
+      "token": 385875973,
+      "name": "Zoo.Plain::Text"
+    }
+  }
+}

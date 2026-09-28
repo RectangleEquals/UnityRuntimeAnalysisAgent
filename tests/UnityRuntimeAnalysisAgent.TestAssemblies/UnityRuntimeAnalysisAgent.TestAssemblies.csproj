@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Types the tests inspect, in their own assembly so its file can be read with dnlib: a type zoo for anchors and the
+       value codec, fake Unity types with the real full names (Core recognises Unity types by name), and a fake scene. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <IsTestProject>false</IsTestProject>
+    <Nullable>disable</Nullable>
+    <NoWarn>$(NoWarn);CS0067;CS0169;CS0414;CS0649;CA1822;IDE0051;IDE0052</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Remove="xunit.v3" />
+    <PackageReference Remove="xunit.runner.visualstudio" />
+    <PackageReference Remove="Microsoft.NET.Test.Sdk" />
+    <Using Remove="Xunit" />
+  </ItemGroup>
+</Project>

@@ -13,6 +13,7 @@ rules that keep the plugin working across many Unity games. The project is pre-r
 | `src/UnityRuntimeAnalysisAgent.Api` | The small public API that scripts and mods under test compile against. |
 | `src/UnityRuntimeAnalysisAgent.BepInEx5` | The BepInEx 5 plugin entry point that wires everything together. |
 | `tests/*.Core.Tests`, `*.Api.Tests`, `*.Protocol.Tests` | Unit tests. Run anywhere, no game needed. |
+| `tests/UnityRuntimeAnalysisAgent.TestAssemblies` | Types the tests inspect: a type zoo, stand-ins for Unity types (with the real full names), a fake scene. Its own assembly, so tests can read it from disk with dnlib. |
 | `build/Packager` | Build-time tool that makes the release package (see below). |
 | `tools/AgentClient` | A small client library: connect, authenticate, send requests, receive events. |
 | `tools/AgentConsole` | A developer console for talking to a running agent (built on `AgentClient`). |
@@ -30,6 +31,9 @@ dotnet test -c Release
 
 - Warnings are errors. A pull request must build with 0 warnings.
 - The tests here need no game: everything that touches Unity or the loader is behind interfaces that the tests fake.
+- Some tests compare against snapshots (`*.verified.json`, with [Verify](https://github.com/VerifyTests/Verify)). When
+  an output changes on purpose, the failing test writes a `*.received.json` next to the snapshot: check the difference,
+  then replace the `.verified` file with it.
 
 ### The package
 
@@ -77,6 +81,8 @@ Without a command it reads commands from the console:
 | `info` | Shows `agent.info` |
 | `send <method> [<json> \| @file]` | Sends a request and prints the response |
 | `subscribe <kind>[,<kind>...]` | Subscribes to events; they're printed as they arrive |
+| `expand <ref>` | Expands a value that was left out of a result (`value.expand`) |
+| `resolve <locator>` | Resolves a locator to a target and member path (`locator.resolve`) |
 | `script <file>` | Runs one request per line (`<method> <json>`; `#` starts a comment) |
 | `wait <ms>` | Waits, printing events meanwhile |
 | `quit` | Exits |

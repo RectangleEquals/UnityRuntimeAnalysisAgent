@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.TestAssemblies\UnityRuntimeAnalysisAgent.TestAssemblies.csproj" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Api\UnityRuntimeAnalysisAgent.Api.csproj" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Unity\UnityRuntimeAnalysisAgent.Unity.csproj" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Overlay\UnityRuntimeAnalysisAgent.Overlay.csproj" />
@@ -10,6 +11,7 @@
     <!-- Built first, read as a file: loading the plugin type itself would need UnityEngine, which only a game has. -->
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.BepInEx5\UnityRuntimeAnalysisAgent.BepInEx5.csproj" ReferenceOutputAssembly="false" />
     <PackageReference Include="dnlib" />
+    <PackageReference Include="Verify.XunitV3" />
   </ItemGroup>
 
   <ItemGroup>

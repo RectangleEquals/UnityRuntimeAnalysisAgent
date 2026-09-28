@@ -1,0 +1,48 @@
+﻿{
+  "described": {
+    "h": 1,
+    "type": {
+      "mvid": "{mvid}",
+      "token": 33554447,
+      "name": "Zoo.Player"
+    },
+    "unity": {
+      "instanceId": {id},
+      "name": "Hero",
+      "destroyed": false
+    }
+  },
+  "inspected": {
+    "t": "object",
+    "h": 1,
+    "type": {
+      "mvid": "{mvid}",
+      "token": 33554447,
+      "name": "Zoo.Player"
+    },
+    "fields": {
+      "health": 100,
+      "position": {
+        "t": "Vector3",
+        "x": 1.5,
+        "y": 0,
+        "z": -2
+      },
+      "stats": {
+        "t": "object",
+        "h": 2,
+        "type": {
+          "mvid": "{mvid}",
+          "token": 33554435,
+          "name": "Zoo.Plain"
+        },
+        "fields": {
+          "number": 42,
+          "text": "hello",
+          "next": null,
+          "Auto": 7
+        }
+      }
+    }
+  }
+}

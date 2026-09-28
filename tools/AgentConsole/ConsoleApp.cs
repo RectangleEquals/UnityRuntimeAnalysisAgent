@@ -8,7 +8,8 @@ namespace UnityRuntimeAnalysisAgent.AgentConsole;
 /// The console's logic, separate from <c>Main</c> so tests can drive it.
 /// <code>
 /// AgentConsole (--discovery &lt;file&gt; | --pipe &lt;name&gt; --token &lt;hex&gt; | --tcp &lt;port&gt; --token &lt;hex&gt;) [--raw] [command]
-/// commands: info · send &lt;method&gt; [&lt;json&gt; | @file] · subscribe &lt;kind&gt;[,&lt;kind&gt;…] · script &lt;file&gt; · wait &lt;ms&gt; · quit
+/// commands: info · send &lt;method&gt; [&lt;json&gt; | @file] · subscribe &lt;kind&gt;[,&lt;kind&gt;…] · expand &lt;ref&gt; · resolve &lt;locator&gt;
+/// · script &lt;file&gt; · wait &lt;ms&gt; · quit
 /// </code>
 /// Without a command it reads commands from standard input, one per line. Events are printed as they arrive.
 /// </summary>
@@ -29,7 +30,7 @@ internal sealed class ConsoleApp
 
     public const string Usage =
         "Usage: AgentConsole (--discovery <file> | --pipe <name> --token <hex> | --tcp <port> --token <hex>) [--raw] [command]\n" +
-        "Commands: info | send <method> [<json> | @file] | subscribe <kind>[,<kind>...] | script <file> | wait <ms> | quit";
+        "Commands: info | send <method> [<json> | @file] | subscribe <kind>[,<kind>...] | expand <ref> | resolve <locator> | script <file> | wait <ms> | quit";
 
     public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output, bool colors)
     {
@@ -129,6 +130,10 @@ internal sealed class ConsoleApp
                     var kinds = argument.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
                     var json = "{\"kinds\":[" + string.Join(",", kinds.Select(k => JsonSerializer.Serialize(k))) + "]}";
                     return await SendAsync(client, UnityLudometry.Protocol.Methods.EventsSubscribe, json);
+                case "expand":
+                    return await SendAsync(client, UnityLudometry.Protocol.Methods.ValueExpand, "{\"ref\":" + JsonSerializer.Serialize(argument) + "}");
+                case "resolve":
+                    return await SendAsync(client, UnityLudometry.Protocol.Methods.LocatorResolve, "{\"locator\":" + JsonSerializer.Serialize(argument) + "}");
                 case "script":
                     var ok = true;
                     foreach (var scriptLine in await File.ReadAllLinesAsync(argument))
@@ -136,7 +141,7 @@ internal sealed class ConsoleApp
                         var parts = scriptLine.Trim();
                         if (parts.Length > 0 && !parts.StartsWith('#'))
                         {
-                            ok &= await ExecuteAsync(client, parts.StartsWith("send ") || parts.StartsWith("subscribe ") || parts.StartsWith("wait ") ? parts : "send " + parts);
+                            ok &= await ExecuteAsync(client, parts.StartsWith("send ") || parts.StartsWith("subscribe ") || parts.StartsWith("wait ") || parts.StartsWith("expand ") || parts.StartsWith("resolve ") ? parts : "send " + parts);
                         }
                     }
 

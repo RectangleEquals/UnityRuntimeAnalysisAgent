@@ -1,0 +1,321 @@
+﻿{
+  "t": "object",
+  "h": 1,
+  "type": {
+    "mvid": "{mvid}",
+    "token": 33554449,
+    "name": "Zoo.Everything"
+  },
+  "fields": {
+    "flag": true,
+    "tiny": -8,
+    "octet": 200,
+    "small": -300,
+    "usmall": 60000,
+    "whole": -123456,
+    "uwhole": 4000000000,
+    "safeLong": 9007199254740992,
+    "bigLong": {
+      "t": "i64",
+      "v": "-9007199254740993"
+    },
+    "bigULong": {
+      "t": "u64",
+      "v": "18446744073709551615"
+    },
+    "single": 0.1,
+    "notANumber": {
+      "t": "f32",
+      "v": "NaN"
+    },
+    "infinity": {
+      "t": "f64",
+      "v": "Infinity"
+    },
+    "real": 2.5,
+    "money": 12.34,
+    "letter": "Q",
+    "text": "hello",
+    "nothing": null,
+    "longText": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "id": {
+      "t": "guid",
+      "v": "5b0e1c7a-3f2d-4e8b-9a61-0c2d4e6f8a1b"
+    },
+    "when": {
+      "t": "datetime",
+      "v": "2026-09-28T12:30:00.0000000Z"
+    },
+    "whenOffset": {
+      "t": "datetimeoffset",
+      "v": "2026-09-28T12:30:00.0000000+02:00"
+    },
+    "span": {
+      "t": "timespan",
+      "v": "1.02:03:04"
+    },
+    "access": {
+      "enum": {
+        "mvid": "{mvid}",
+        "token": 33554441,
+        "name": "Zoo.Access"
+      },
+      "value": 5,
+      "name": "Read, Exec"
+    },
+    "big": {
+      "enum": {
+        "mvid": "{mvid}",
+        "token": 33554442,
+        "name": "Zoo.Big"
+      },
+      "value": 18446744073709551615,
+      "name": "Max"
+    },
+    "type": {
+      "mvid": "{mvid}",
+      "token": 33554435,
+      "name": "Zoo.Plain"
+    },
+    "boxType": {
+      "mvid": "{mvid}",
+      "token": 33554438,
+      "name": "Zoo.Box`1<System.Int32>",
+      "typeArgs": [
+        "System.Int32"
+      ]
+    },
+    "callback": {
+      "delegate": [
+        {
+          "target": {
+            "h": 1,
+            "type": {
+              "mvid": "{mvid}",
+              "token": 33554449,
+              "name": "Zoo.Everything"
+            }
+          },
+          "method": {
+            "mvid": "{mvid}",
+            "token": 100663335,
+            "name": "Zoo.Everything::Callback()"
+          }
+        }
+      ]
+    },
+    "array": {
+      "t": "list",
+      "count": 3,
+      "items": [
+        1,
+        2,
+        3
+      ]
+    },
+    "names": {
+      "t": "list",
+      "count": 5,
+      "items": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ]
+    },
+    "scores": {
+      "t": "dict",
+      "count": 2,
+      "entries": [
+        {
+          "k": "x",
+          "v": 1
+        },
+        {
+          "k": "y",
+          "v": 2
+        }
+      ]
+    },
+    "byPoint": {
+      "t": "dict",
+      "count": 1,
+      "entries": [
+        {
+          "k": {
+            "redacted": {
+              "reason": "depth",
+              "ref": "x{run}:1",
+              "type": {
+                "mvid": "{mvid}",
+                "token": 33554436,
+                "name": "Zoo.Point"
+              },
+              "size": {
+                "count": null,
+                "length": null,
+                "estBytes": null
+              }
+            }
+          },
+          "v": "p"
+        }
+      ]
+    },
+    "set": {
+      "t": "list",
+      "count": 1,
+      "items": [
+        7
+      ]
+    },
+    "lazy": {
+      "redacted": {
+        "reason": "notEnumerated",
+        "ref": "x{run}:2",
+        "type": {
+          "mvid": "{mvid}",
+          "token": 33554475,
+          "name": "Zoo.Everything/<Numbers>d__50"
+        },
+        "member": "lazy",
+        "path": [
+          {
+            "member": {
+              "mvid": "{mvid}",
+              "token": 67109000,
+              "name": "Zoo.Everything::lazy"
+            }
+          }
+        ],
+        "h": 7,
+        "size": {
+          "count": null,
+          "length": null,
+          "estBytes": null
+        }
+      }
+    },
+    "point": {
+      "t": "object",
+      "type": {
+        "mvid": "{mvid}",
+        "token": 33554436,
+        "name": "Zoo.Point"
+      },
+      "fields": {
+        "X": 3,
+        "Y": 4
+      }
+    },
+    "position": {
+      "t": "Vector3",
+      "x": 1.5,
+      "y": 0,
+      "z": -2
+    },
+    "cell": {
+      "t": "Vector2Int",
+      "x": 4,
+      "y": 5
+    },
+    "color": {
+      "t": "Color",
+      "r": 1,
+      "g": 0.5,
+      "b": 0,
+      "a": 1
+    },
+    "color32": {
+      "t": "Color32",
+      "r": 255,
+      "g": 128,
+      "b": 0,
+      "a": 255
+    },
+    "rect": {
+      "t": "Rect",
+      "x": 1,
+      "y": 2,
+      "width": 3,
+      "height": 4
+    },
+    "bounds": {
+      "t": "Bounds",
+      "center": {
+        "t": "Vector3",
+        "x": 1,
+        "y": 2,
+        "z": 3
+      },
+      "extents": {
+        "t": "Vector3",
+        "x": 0.5,
+        "y": 0.5,
+        "z": 0.5
+      }
+    },
+    "mask": {
+      "t": "LayerMask",
+      "value": 5
+    },
+    "onUse": {
+      "t": "unityEvent",
+      "persistent": [
+        {
+          "target": {
+            "h": 8,
+            "type": {
+              "mvid": "{mvid}",
+              "token": 33554453,
+              "name": "UnityEngine.GameObject"
+            },
+            "unity": {
+              "instanceId": {id},
+              "name": "Owner",
+              "destroyed": false
+            }
+          },
+          "method": "Use"
+        }
+      ],
+      "runtimeListeners": 1
+    },
+    "owner": {
+      "h": 8,
+      "type": {
+        "mvid": "{mvid}",
+        "token": 33554453,
+        "name": "UnityEngine.GameObject"
+      },
+      "unity": {
+        "instanceId": {id},
+        "name": "Owner",
+        "destroyed": false
+      }
+    },
+    "plain": {
+      "t": "object",
+      "h": 9,
+      "type": {
+        "mvid": "{mvid}",
+        "token": 33554435,
+        "name": "Zoo.Plain"
+      },
+      "fields": {
+        "number": 42,
+        "text": "hello",
+        "next": null,
+        "Auto": 7
+      }
+    },
+    "shared": {
+      "ref": 9
+    },
+    "self": {
+      "ref": 1
+    },
+    "boxed": 5
+  }
+}

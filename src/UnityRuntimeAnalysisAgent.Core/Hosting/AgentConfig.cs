@@ -48,6 +48,9 @@ public sealed class AgentConfig
     /// <summary>Config key of <see cref="MaxEventQueueBytes"/>.</summary>
     public const string MaxEventQueueBytesKey = "Events.MaxQueueBytes";
 
+    /// <summary>Config key of <see cref="MaxHandles"/>.</summary>
+    public const string MaxHandlesKey = "Handles.Max";
+
     /// <summary>Where the discovery file is written. No default: without it the agent listens but publishes nothing.</summary>
     public string? ProvidersDir { get; set; }
 
@@ -74,6 +77,9 @@ public sealed class AgentConfig
 
     /// <summary>Unsent event bytes per connection before the oldest events are dropped (default 8 MiB).</summary>
     public int MaxEventQueueBytes { get; set; } = 8 * 1024 * 1024;
+
+    /// <summary>Live object handles kept before the least recently used are released (default 20,000).</summary>
+    public int MaxHandles { get; set; } = 20_000;
 
     /// <summary>Problems found while reading (each already resolved to a default).</summary>
     public IReadOnlyList<string> Warnings => _warnings;
@@ -150,6 +156,7 @@ public sealed class AgentConfig
         config.StallMs = config.ReadInt(source, StallMsKey, config.StallMs, 250, 600_000);
         config.MaxConcurrentJobs = config.ReadInt(source, MaxConcurrentJobsKey, config.MaxConcurrentJobs, 1, 16);
         config.MaxEventQueueBytes = config.ReadInt(source, MaxEventQueueBytesKey, config.MaxEventQueueBytes, 64 * 1024, 256 * 1024 * 1024);
+        config.MaxHandles = config.ReadInt(source, MaxHandlesKey, config.MaxHandles, 100, 1_000_000);
         return config;
     }
 
@@ -161,6 +168,7 @@ public sealed class AgentConfig
         new KeyValuePair<string, long>(StallMsKey, StallMs),
         new KeyValuePair<string, long>(MaxConcurrentJobsKey, MaxConcurrentJobs),
         new KeyValuePair<string, long>(MaxEventQueueBytesKey, MaxEventQueueBytes),
+        new KeyValuePair<string, long>(MaxHandlesKey, MaxHandles),
     };
 
     private int ReadInt(IConfigSource source, string key, int fallback, int min, int max)

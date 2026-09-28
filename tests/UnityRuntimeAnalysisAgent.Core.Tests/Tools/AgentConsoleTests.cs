@@ -91,6 +91,18 @@ public sealed class AgentConsoleTests : IDisposable
     }
 
     [Fact]
+    public async Task Expand_and_resolve_send_their_methods()
+    {
+        // This host has no Unity: the main-thread methods answer MAIN_THREAD_UNAVAILABLE, which shows the request went out.
+        var output = new SyncWriter();
+        var input = new StringReader(string.Join("\n", "expand x1:2", "resolve live://static/Ns.Type.field", "quit"));
+        await ConsoleApp.RunAsync(["--discovery", _host.DiscoveryPath!], input, output, colors: false);
+        var text = output.ToString();
+        Assert.Contains("value.expand → MAIN_THREAD_UNAVAILABLE", text);
+        Assert.Contains("locator.resolve → MAIN_THREAD_UNAVAILABLE", text);
+    }
+
+    [Fact]
     public async Task Scripts_run_one_request_per_line()
     {
         var script = Path.Combine(_providers, "script.txt");

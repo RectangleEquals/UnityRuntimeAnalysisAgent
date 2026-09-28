@@ -1,3 +1,4 @@
+using UnityRuntimeAnalysisAgent.TestAssemblies;
 using System.Net;
 using System.Net.Sockets;
 using UnityLudometry.Protocol;
@@ -5,13 +6,14 @@ using UnityLudometry.Protocol.Conformance;
 using UnityLudometry.Protocol.Envelopes;
 using UnityLudometry.Protocol.Framing;
 using UnityLudometry.Protocol.Json;
+using UnityLudometry.Protocol.Messages;
 using UnityRuntimeAnalysisAgent.Core.Hosting;
 
 namespace UnityRuntimeAnalysisAgent.Protocol.Tests;
 
 /// <summary>
-/// Sends the pinned protocol's fixtures of every method this build implements (the session, modes, log level, batch, jobs
-/// and the activity feed) to a real in-process agent and checks its responses: same outcome and error code as the fixture,
+/// Sends the pinned protocol's fixtures of every method this build implements (the session, modes, log level, batch, jobs,
+/// the activity feed and the data model) to a real in-process agent and checks its responses: same outcome and error code as the fixture,
 /// results valid against the schemas, and the connection closed after a failed handshake. Events the agent emits are
 /// validated against their schemas too.
 /// </summary>
@@ -22,6 +24,8 @@ public sealed class SessionConformanceTests : IDisposable
         "hello", "ping", "agent.info", "agent.capabilities", "cancel", "events.subscribe", "events.unsubscribe", "_generic",
         "agent.setMode", "agent.logLevel", "batch", "job.get", "job.wait", "job.cancel", "job.list", "activity.list", "activity.get",
         "agent.selfTest",
+        "handles.list", "handles.release", "handles.releaseAll", "vars.set", "vars.get", "vars.list", "vars.delete", "value.expand",
+        "locator.resolve", "code.resolve",
     ];
 
     private static readonly Lazy<IReadOnlyDictionary<string, FixtureCase>> Fixtures = new(() =>
@@ -71,6 +75,10 @@ public sealed class SessionConformanceTests : IDisposable
         {
             Assert.Null(peer.Call(Ping()).Error);
         }
+        else if (DataGroups.Contains(fixture.Group))
+        {
+            request = WithDataModel(request, id);
+        }
 
         var response = peer.Call(WithToken(request, _host.Token.Value));
         var expected = (ResponseEnvelope)Envelope.Parse(fixture.Response!);
@@ -93,6 +101,26 @@ public sealed class SessionConformanceTests : IDisposable
         else
         {
             Assert.Null(peer.Call(Ping()).Error); // everything else keeps it open
+        }
+    }
+
+    [Fact]
+    public void Encoded_values_match_the_value_schema()
+    {
+        var everything = new Zoo.Everything { owner = _unity.World.Create("Owner") };
+        everything.onUse.AddPersistent(everything.owner, "Use");
+        var root = new Target { H = _host.Data.Handles.Mint(everything) };
+        var views = new[]
+        {
+            new UnityRuntimeAnalysisAgent.Core.Data.ViewOptions(),
+            new UnityRuntimeAnalysisAgent.Core.Data.ViewOptions { Depth = 1, MaxItems = 1, MaxString = 3, MaxMembers = 20, Properties = true, Anchors = true },
+            new UnityRuntimeAnalysisAgent.Core.Data.ViewOptions { Depth = 8, Enumerate = true },
+        };
+        foreach (var view in views)
+        {
+            var value = _host.Data.Writer(view, 1).Write(everything, new UnityRuntimeAnalysisAgent.Core.Data.Place { Root = root });
+            var problems = ProtocolSchemas.Validate(value.ToString(), "common/value.schema.json");
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
         }
     }
 
@@ -168,6 +196,41 @@ public sealed class SessionConformanceTests : IDisposable
 
     private static JsonObject Hello(string token) =>
         Request(Methods.Hello, $"{{\"token\":\"{token}\",\"client\":{{\"name\":\"conformance\",\"version\":\"0.1\"}},\"protocol\":{{\"major\":{ProtocolVersion.Major},\"minor\":{ProtocolVersion.Minor}}}}}");
+
+    private static readonly string[] DataGroups =
+    [
+        "handles.list", "handles.release", "handles.releaseAll", "vars.set", "vars.get", "vars.list", "vars.delete", "value.expand",
+        "locator.resolve", "code.resolve",
+    ];
+
+    /// <summary>
+    /// The state the data-model fixtures refer to: handle 481 is an <c>Example.Inventory</c> on <c>Main/Player</c> (with lower
+    /// handles in use), the variable <c>Player</c> holds it, and the example ref and cursor become real ones. For the
+    /// handle-expired fixtures the component is destroyed.
+    /// </summary>
+    private JsonObject WithDataModel(JsonObject request, string id)
+    {
+        var inventory = _unity.World.Create("Player").AddComponent<Example.Inventory>();
+        while (_host.Data.Handles.Count < 480)
+        {
+            _host.Data.Handles.Mint(new object());
+        }
+
+        Assert.Equal(481, _host.Data.Handles.Mint(inventory));
+        _host.Data.Variables.SetHandle("Player", 481);
+        if (id.EndsWith("/handle-expired", StringComparison.Ordinal))
+        {
+            UnityEngine.Object.Destroy(inventory);
+        }
+
+        var writer = _host.Data.Writer(new UnityRuntimeAnalysisAgent.Core.Data.ViewOptions { MaxItems = 1 }, 1);
+        var list = (JsonObject)writer.Write(inventory.items, new UnityRuntimeAnalysisAgent.Core.Data.Place { Root = new Target { H = 481 } }.Then(new MemberPathStep { Name = "items" }, ".items"));
+        var reference = ((JsonString)((JsonObject)((JsonObject)((JsonArray)list["items"]!)[1])["redacted"]!)["ref"]!).Value;
+        var text = request.ToString()
+            .Replace("\"example-ref\"", $"\"{reference}\"", StringComparison.Ordinal)
+            .Replace("\"example-cursor\"", $"\"{_host.Data.Cursors.Mint(0L)}\"", StringComparison.Ordinal);
+        return (JsonObject)JsonValue.Parse(text);
+    }
 
     /// <summary>Substitutes the live session token for the fixture's example token; an all-zero token stays (it's the wrong-token case).</summary>
     private static JsonObject WithToken(JsonObject request, string token)
@@ -300,7 +363,21 @@ public sealed class SessionConformanceTests : IDisposable
             return new(Interlocked.Read(ref _frame), seconds, seconds, seconds, 1, 0.005);
         }
 
-        public bool IsDestroyed(object unityObject) => false;
+        public bool IsDestroyed(object unityObject) => FakeWorld.IsDestroyed(unityObject);
+
+        public FakeWorld World { get; } = new();
+
+        public UnityRuntimeAnalysisAgent.Core.Abstractions.UnityObjectFacts? Describe(object unityObject) =>
+            FakeWorld.Describe(unityObject) is { } facts ? new(facts.InstanceId, facts.Name) : null;
+
+        public object? FindGameObject(string path, string? scene) => World.Find(path, scene);
+
+        public object? GetComponent(object gameObjectOrComponent, Type componentType) => FakeWorld.GetComponent(gameObjectOrComponent, componentType);
+
+        public object? FindChild(object gameObjectOrComponent, string path) => FakeWorld.FindChild(gameObjectOrComponent, path);
+
+        public UnityRuntimeAnalysisAgent.Core.Abstractions.SceneAddress? Locate(object unityObject) =>
+            FakeWorld.Locate(unityObject) is { } at ? new(at.Scene, at.Path) : null;
 
         public void Dispose() => _alive = false;
     }

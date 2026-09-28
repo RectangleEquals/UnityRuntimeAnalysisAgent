@@ -42,3 +42,6 @@ Directory.Build.local.props
 *.local.json
 tests/**/local*.json
 
+# Snapshot tests: what a failing run produced (compare with the .verified file, then accept or fix)
+*.received.*
+

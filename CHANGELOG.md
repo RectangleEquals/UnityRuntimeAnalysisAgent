@@ -21,3 +21,10 @@
   shortcuts), every setting bound with its default and description, `agent.selfTest`, and the release package
   (`dist/`: the six plugin assemblies, a verified `package.json` and the zip, byte-reproducible; CI uploads it).
   Verified with BepInEx 5.4.23.5 in a Unity 6 Mono player ([compatibility](docs/compatibility.md)).
+- The data model: exact code references (anchors: module version id + metadata token, the same ones static tools
+  read; `code.resolve` for exploratory lookup by name), live object handles (`handles.list`, `handles.release`,
+  `handles.releaseAll`; setting `Handles.Max`), variables (`vars.set`, `vars.get`, `vars.list`, `vars.delete`),
+  targets and member paths, the value encoding and decoding, redaction stubs whenever a limit leaves a value out
+  (`value.expand` reads it; nothing is dropped silently), durable locators (`locator.resolve`), and paging cursors.
+  `AgentConsole` gained `expand` and `resolve`.
+- Methods that wait (`job.wait`, `batch`) no longer hold a thread while waiting.

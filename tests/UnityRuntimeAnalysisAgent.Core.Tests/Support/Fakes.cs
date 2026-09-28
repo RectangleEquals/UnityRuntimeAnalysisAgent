@@ -1,3 +1,4 @@
+using UnityRuntimeAnalysisAgent.TestAssemblies;
 using UnityRuntimeAnalysisAgent.Core.Abstractions;
 using UnityRuntimeAnalysisAgent.Core.Hosting;
 
@@ -101,9 +102,23 @@ public sealed class FakeUnityApi : IUnityApi
     {
         lock (_gate)
         {
-            return _destroyed.Contains(unityObject);
+            return _destroyed.Contains(unityObject) || FakeWorld.IsDestroyed(unityObject);
         }
     }
+
+    /// <summary>The fake scenes (<c>FindGameObject</c> and friends search them).</summary>
+    public FakeWorld World { get; } = new();
+
+    public UnityObjectFacts? Describe(object unityObject) =>
+        FakeWorld.Describe(unityObject) is { } facts ? new UnityObjectFacts(facts.InstanceId, facts.Name) : null;
+
+    public object? FindGameObject(string path, string? scene) => World.Find(path, scene);
+
+    public object? GetComponent(object gameObjectOrComponent, Type componentType) => FakeWorld.GetComponent(gameObjectOrComponent, componentType);
+
+    public object? FindChild(object gameObjectOrComponent, string path) => FakeWorld.FindChild(gameObjectOrComponent, path);
+
+    public SceneAddress? Locate(object unityObject) => FakeWorld.Locate(unityObject) is { } at ? new SceneAddress(at.Scene, at.Path) : null;
 
     public void Destroy(object unityObject)
     {
