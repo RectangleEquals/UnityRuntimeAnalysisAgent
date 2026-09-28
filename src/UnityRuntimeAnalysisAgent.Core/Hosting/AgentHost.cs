@@ -74,6 +74,7 @@ public sealed class AgentHost : IDisposable
         Dispatcher.Register(new JobService(Jobs));
         Dispatcher.Register(new ActivityService(Activity));
         Dispatcher.Register(new BatchService(Dispatcher, Pump));
+        Dispatcher.Register(new DiagnosticsService(this));
         foreach (var warning in _config.Warnings)
         {
             Log.Warning(warning);

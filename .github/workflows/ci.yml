@@ -29,6 +29,15 @@ jobs:
       - name: Test
         run: dotnet test -c Release --no-build --logger trx --results-directory TestResults
 
+      - name: Upload the plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: |
+            dist/package.json
+            dist/*.zip
+          if-no-files-found: error
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

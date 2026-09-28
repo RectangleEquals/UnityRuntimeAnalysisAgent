@@ -50,7 +50,7 @@ public sealed class TestHost : IDisposable
     public ResponseEnvelope CallStepping(WirePeer peer, string method, string? paramsJson = null, int maxFrames = 200)
     {
         var id = peer.Send(method, paramsJson);
-        var response = Task.Run(() => peer.AwaitResponse(id, 10_000));
+        var response = Task.Factory.StartNew(() => peer.AwaitResponse(id, 10_000), TaskCreationOptions.LongRunning); // its own thread
         for (var i = 0; i < maxFrames && !response.IsCompleted; i++)
         {
             Unity.StepFrames();

@@ -8,10 +8,10 @@ namespace UnityRuntimeAnalysisAgent.Core.Hosting;
 public sealed class AgentEnvironment
 {
     /// <summary>Agent version (SemVer).</summary>
-    public string AgentVersion { get; set; } = DefaultAgentVersion();
+    public string AgentVersion { get; set; } = BuildVersion().Version;
 
-    /// <summary>Source commit of the agent build, if known.</summary>
-    public string? GitCommit { get; set; }
+    /// <summary>Source commit of the agent build, if the build recorded it.</summary>
+    public string? GitCommit { get; set; } = BuildVersion().Commit;
 
     /// <summary>Version of the public Api that snippets and mods compile against (<c>major.minor</c>).</summary>
     public string ApiVersion { get; set; } = "0.1";
@@ -59,15 +59,16 @@ public sealed class AgentEnvironment
         return environment;
     }
 
-    private static string DefaultAgentVersion()
+    /// <summary>The version and commit the build stamped (informational version <c>&lt;version&gt;+&lt;commit&gt;</c>).</summary>
+    internal static (string Version, string? Commit) BuildVersion()
     {
         var info = typeof(AgentEnvironment).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (string.IsNullOrEmpty(info))
         {
-            return "0.0.0";
+            return ("0.0.0", null);
         }
 
         var plus = info!.IndexOf('+');
-        return plus >= 0 ? info.Substring(0, plus) : info;
+        return plus >= 0 ? (info.Substring(0, plus), info.Substring(plus + 1)) : (info, null);
     }
 }

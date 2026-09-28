@@ -9,6 +9,7 @@
     <ProjectReference Include="$(ConformanceProject)" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
     <PackageReference Include="JsonSchema.Net" />
+    <ProjectReference Include="..\..\build\Packager\Packager.csproj" />
   </ItemGroup>
 
   <ItemGroup>

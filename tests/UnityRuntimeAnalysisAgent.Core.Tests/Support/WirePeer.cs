@@ -4,18 +4,44 @@ using UnityLudometry.Protocol.Json;
 
 namespace UnityRuntimeAnalysisAgent.Core.Tests.Support;
 
-/// <summary>The client side of an in-memory connection: writes frames and reads envelopes (with a timeout).</summary>
-public sealed class WirePeer(Stream stream) : IDisposable
+/// <summary>The client side of an in-memory connection: writes frames and reads envelopes (with a timeout). Frames are read
+/// on the peer's own thread, so waiting for one never holds a thread-pool thread the agent needs.</summary>
+public sealed class WirePeer : IDisposable
 {
-    private readonly FrameReader _reader = new(stream);
-    private readonly FrameWriter _writer = new(stream);
+    private readonly Stream _stream;
+    private readonly FrameWriter _writer;
+    private readonly System.Collections.Concurrent.BlockingCollection<byte[]?> _frames = new();
     private int _id;
 
-    public Stream Stream => stream;
+    public WirePeer(Stream stream)
+    {
+        _stream = stream;
+        _writer = new FrameWriter(stream);
+        var reader = new FrameReader(stream);
+        new Thread(() =>
+        {
+            try
+            {
+                while (reader.ReadFrame() is { } frame)
+                {
+                    _frames.Add(frame);
+                }
+            }
+            catch (Exception)
+            {
+                // the connection closed or broke; readers see it as closed
+            }
+
+            _frames.Add(null); // the agent closed the connection
+        })
+        { IsBackground = true, Name = "WirePeer reader" }.Start();
+    }
+
+    public Stream Stream => _stream;
 
     public void WriteRaw(byte[] payload) => _writer.WriteFrame(payload);
 
-    public string Send(string method, string? paramsJson = null, string? contextJson = null)
+    public string Send(string method, string? paramsJson = null, string? contextJson = null, long? timeoutMs = null)
     {
         var id = "t-" + Interlocked.Increment(ref _id);
         var request = new RequestEnvelope
@@ -24,6 +50,7 @@ public sealed class WirePeer(Stream stream) : IDisposable
             Method = method,
             Params = paramsJson is null ? null : (JsonObject)JsonValue.Parse(paramsJson),
             Context = contextJson is null ? null : (JsonObject)JsonValue.Parse(contextJson),
+            TimeoutMs = timeoutMs,
         };
         _writer.WriteFrame(request.ToUtf8Bytes());
         return id;
@@ -32,13 +59,18 @@ public sealed class WirePeer(Stream stream) : IDisposable
     /// <summary>The next envelope, or null when the agent closed the connection.</summary>
     public Envelope? Receive(int timeoutMs = 5000)
     {
-        var task = Task.Run(() => _reader.ReadFrame());
-        if (!task.Wait(timeoutMs))
+        if (!_frames.TryTake(out var frame, timeoutMs))
         {
             throw new TimeoutException("No frame from the agent.");
         }
 
-        return task.Result is { } frame ? Envelope.Parse(frame) : null;
+        if (frame is null)
+        {
+            _frames.Add(null); // stays closed for later reads
+            return null;
+        }
+
+        return Envelope.Parse(frame);
     }
 
     /// <summary>Events received while waiting for responses (in arrival order).</summary>
@@ -106,5 +138,5 @@ public sealed class WirePeer(Stream stream) : IDisposable
         }
     }
 
-    public void Dispose() => stream.Dispose();
+    public void Dispose() => _stream.Dispose();
 }

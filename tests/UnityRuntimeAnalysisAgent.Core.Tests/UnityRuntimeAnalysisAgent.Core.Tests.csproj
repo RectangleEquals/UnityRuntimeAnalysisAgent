@@ -6,5 +6,24 @@
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Overlay\UnityRuntimeAnalysisAgent.Overlay.csproj" />
     <ProjectReference Include="..\..\tools\AgentClient\AgentClient.csproj" />
     <ProjectReference Include="..\..\tools\AgentConsole\AgentConsole.csproj" />
+    <ProjectReference Include="..\..\build\Packager\Packager.csproj" />
+    <!-- Built first, read as a file: loading the plugin type itself would need UnityEngine, which only a game has. -->
+    <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.BepInEx5\UnityRuntimeAnalysisAgent.BepInEx5.csproj" ReferenceOutputAssembly="false" />
+    <PackageReference Include="dnlib" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PluginAssembly</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)..\..\src\UnityRuntimeAnalysisAgent.BepInEx5\bin\$(Configuration)\netstandard2.0\UnityRuntimeAnalysisAgent.BepInEx5.dll</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepoRoot</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)..\..</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>VersionPrefix</_Parameter1>
+      <_Parameter2>$(VersionPrefix)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

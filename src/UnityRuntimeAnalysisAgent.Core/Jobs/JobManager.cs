@@ -118,7 +118,8 @@ public sealed class JobManager : IDisposable
         }
     }
 
-    /// <summary>Waits for a job to finish, up to <paramref name="timeoutMs"/>; returns its state either way.</summary>
+    /// <summary>Waits for a job to finish, up to <paramref name="timeoutMs"/>; returns its state either way. It blocks the
+    /// calling thread: request handlers use <see cref="WaitDeferred"/>.</summary>
     public JobInfo Wait(string jobId, int timeoutMs, CancellationToken cancellation)
     {
         Job job;
@@ -133,6 +134,74 @@ public sealed class JobManager : IDisposable
         {
             return job.Info();
         }
+    }
+
+    /// <summary>Like <see cref="Wait"/>, without holding a thread: the result completes when the job finishes, when
+    /// <paramref name="timeoutMs"/> has passed (with the job's current state), or fails when cancelled.</summary>
+    public Deferred WaitDeferred(string jobId, int timeoutMs, CancellationToken cancellation)
+    {
+        var deferred = new Deferred();
+        Timer? timer = null;
+        CancellationTokenRegistration registration = default;
+        Job job = null!;
+        Action<JobInfo> onFinished = null!;
+
+        // Whichever comes first (finish, timer, cancellation) completes the result and releases the other two.
+        void Settle(bool completed)
+        {
+            if (!completed)
+            {
+                return;
+            }
+
+            timer?.Dispose();
+            registration.Dispose();
+            lock (_gate)
+            {
+                job.Waiters.Remove(onFinished);
+            }
+        }
+
+        onFinished = info => Settle(deferred.Complete(info));
+        lock (_gate)
+        {
+            job = Find(jobId);
+            if (job.State is "succeeded" or "failed" or "cancelled")
+            {
+                deferred.Complete(job.Info());
+                return deferred;
+            }
+
+            timer = new Timer(_ =>
+            {
+                JobInfo info;
+                lock (_gate)
+                {
+                    info = job.Info();
+                }
+
+                Settle(deferred.Complete(info));
+            }, null, Timeout.Infinite, Timeout.Infinite);
+            job.Waiters.Add(onFinished);
+        }
+
+        registration = cancellation.Register(() => Settle(deferred.Fail(new OperationCanceledException(cancellation))));
+        if (deferred.IsCompleted)
+        {
+            registration.Dispose(); // settled before the registration existed
+            return deferred;
+        }
+
+        try
+        {
+            timer.Change(Math.Max(0, timeoutMs), Timeout.Infinite);
+        }
+        catch (ObjectDisposedException)
+        {
+            // settled meanwhile
+        }
+
+        return deferred;
     }
 
     /// <summary>Cancels a job: a queued one at once, a running one cooperatively.</summary>
@@ -313,6 +382,17 @@ public sealed class JobManager : IDisposable
         }
 
         job.Finished.Set();
+        List<Action<JobInfo>> waiters;
+        lock (_gate)
+        {
+            waiters = job.Waiters.ToList();
+        }
+
+        foreach (var waiter in waiters)
+        {
+            waiter(info);
+        }
+
         SafePublish(EventKinds.JobFinished, new JobFinishedEventParams { Job = info }, job.Context);
     }
 
@@ -365,6 +445,8 @@ public sealed class JobManager : IDisposable
         public CancellationTokenSource Cancellation { get; } = new();
 
         public ManualResetEventSlim Finished { get; } = new(false);
+
+        public List<Action<JobInfo>> Waiters { get; } = new();
 
         public Stopwatch ProgressClock { get; } = Stopwatch.StartNew();
 

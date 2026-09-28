@@ -169,4 +169,15 @@ public sealed class FakeLoaderApi : ILoaderApi
     public IAgentLogger CreateLog(string source) => Log;
 
     public void RaiseLog(LoaderLogEntry entry) => LoaderLog?.Invoke(entry);
+
+    public List<object> PluginInstances { get; } = new();
+
+    public object InstantiatePlugin(Type pluginType)
+    {
+        var instance = Activator.CreateInstance(pluginType)!;
+        PluginInstances.Add(instance);
+        return instance;
+    }
+
+    public void DestroyPlugin(object instance) => PluginInstances.Remove(instance);
 }

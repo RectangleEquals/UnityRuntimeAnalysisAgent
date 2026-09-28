@@ -21,6 +21,7 @@ public sealed class SessionConformanceTests : IDisposable
     [
         "hello", "ping", "agent.info", "agent.capabilities", "cancel", "events.subscribe", "events.unsubscribe", "_generic",
         "agent.setMode", "agent.logLevel", "batch", "job.get", "job.wait", "job.cancel", "job.list", "activity.list", "activity.get",
+        "agent.selfTest",
     ];
 
     private static readonly Lazy<IReadOnlyDictionary<string, FixtureCase>> Fixtures = new(() =>
@@ -116,6 +117,22 @@ public sealed class SessionConformanceTests : IDisposable
             Assert.True(problems.Count == 0, ev.Method + ": " + string.Join(Environment.NewLine, problems));
             Assert.Equal("{\"finding\":\"F-1\"}", ev.Context!.ToString());
         }
+    }
+
+    [Fact]
+    public void The_package_manifest_matches_its_schema()
+    {
+        var build = Path.Combine(_providers, "plugin-build");
+        Directory.CreateDirectory(build);
+        foreach (var name in UnityRuntimeAnalysisAgent.Packaging.PackageBuilder.ShippedAssemblies)
+        {
+            File.WriteAllText(Path.Combine(build, name), name);
+        }
+
+        var dist = Path.Combine(_providers, "dist");
+        UnityRuntimeAnalysisAgent.Packaging.PackageBuilder.Build(new(build, dist, "0.1.0-dev", "0.1", null));
+        var problems = ProtocolSchemas.Validate(File.ReadAllText(Path.Combine(dist, "package.json")), "files/package.schema.json");
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
     [Fact]
@@ -249,17 +266,27 @@ public sealed class SessionConformanceTests : IDisposable
     private sealed class TickingUnity : UnityRuntimeAnalysisAgent.Core.Abstractions.IUnityApi, IDisposable
     {
         private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
-        private Timer? _timer;
+        private volatile bool _alive;
         private long _frame;
 
-        public bool IsPumpHostAlive => _timer is not null;
+        public bool IsPumpHostAlive => _alive;
 
-        public void CreatePumpHost(Action tick, Action endOfFrame) => _timer = new Timer(_ =>
+        // One thread plays Unity's main thread: a frame every 5 ms, never two at once, and independent of the thread pool.
+        public void CreatePumpHost(Action tick, Action endOfFrame)
         {
-            Interlocked.Increment(ref _frame);
-            tick();
-            endOfFrame();
-        }, null, 5, 5);
+            _alive = true;
+            new Thread(() =>
+            {
+                while (_alive)
+                {
+                    Interlocked.Increment(ref _frame);
+                    tick();
+                    endOfFrame();
+                    Thread.Sleep(5);
+                }
+            })
+            { IsBackground = true, Name = "fake main thread" }.Start();
+        }
 
         public void RecreatePumpHost()
         {
@@ -275,10 +302,6 @@ public sealed class SessionConformanceTests : IDisposable
 
         public bool IsDestroyed(object unityObject) => false;
 
-        public void Dispose()
-        {
-            _timer?.Dispose();
-            _timer = null;
-        }
+        public void Dispose() => _alive = false;
     }
 }

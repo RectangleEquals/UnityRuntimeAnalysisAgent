@@ -21,7 +21,8 @@ namespace UnityRuntimeAnalysisAgent.Core.Dispatch;
 /// </summary>
 /// <remarks>
 /// Signatures: <c>ProtocolMessage M(RequestContext context, TParams parameters)</c> or <c>ProtocolMessage M(RequestContext context)</c>.
-/// Main-thread methods may instead return an iterator (a routine yielding <see cref="PumpWait"/>s, then the result).
+/// Main-thread methods may instead return an iterator (a routine yielding <see cref="PumpWait"/>s, then the result). A
+/// method that has to wait returns a <see cref="Deferred"/> and completes it later, instead of blocking a thread.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class RpcMethodAttribute : Attribute
@@ -268,20 +269,6 @@ public sealed class Dispatcher
         });
     }
 
-    /// <summary>Dispatches a request and waits for its outcome (for callers already on a worker thread).</summary>
-    public Outcome Invoke(RequestContext context)
-    {
-        Outcome? outcome = null;
-        using var finished = new ManualResetEventSlim(false);
-        Dispatch(context, o =>
-        {
-            outcome = o;
-            finished.Set();
-        });
-        finished.Wait();
-        return outcome!;
-    }
-
     /// <summary>Runs a request right now on the calling thread, which must be the main thread (same-frame batches).</summary>
     public Outcome InvokeInline(RequestContext context)
     {
@@ -291,7 +278,13 @@ public sealed class Dispatcher
         {
             var entry = Prepare(context, out var parameters);
             call.Entry = entry;
-            call.Succeed(_pump.RunInline(() => entry.Invoke(context, parameters)));
+            var result = _pump.RunInline(() => entry.Invoke(context, parameters));
+            if (result is Deferred)
+            {
+                throw ProtocolException.InvalidParams("params.requests", $"{context.Method} waits for something, so it can't run in a same-frame batch.");
+            }
+
+            call.Succeed(result);
         }
         catch (Exception e)
         {
@@ -410,6 +403,12 @@ public sealed class Dispatcher
 
         public void Succeed(object? result)
         {
+            if (result is Deferred deferred)
+            {
+                deferred.Attach(Succeed, Fail); // answered when it completes; no thread waits meanwhile
+                return;
+            }
+
             if (result is ProtocolMessage message)
             {
                 Complete(Outcome.Success(message.ToJson()));

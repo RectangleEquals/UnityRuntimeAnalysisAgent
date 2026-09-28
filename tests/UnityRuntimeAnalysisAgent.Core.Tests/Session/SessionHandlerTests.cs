@@ -58,7 +58,7 @@ public sealed class SessionHandlerTests : IDisposable
         Assert.Equal(
             new[]
             {
-                "activity.get", "activity.list", "agent.capabilities", "agent.info", "agent.logLevel", "agent.setMode", "batch", "cancel",
+                "activity.get", "activity.list", "agent.capabilities", "agent.info", "agent.logLevel", "agent.selfTest", "agent.setMode", "batch", "cancel",
                 "events.subscribe", "events.unsubscribe", "hello", "job.cancel", "job.get", "job.list", "job.wait", "ping",
             },
             caps.Methods.Select(m => m.Name));

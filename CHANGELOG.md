@@ -16,3 +16,8 @@
   and audit log (`activity.list`, `activity.get`); `agent.setMode` (lower only) and `agent.logLevel`; and the settings
   `Pump.FrameBudgetMs`, `Pump.StallMs`, `Jobs.MaxConcurrent` and `Events.MaxQueueBytes`
   ([configuration](docs/configuration.md)).
+- The BepInEx 5 plugin: the agent now runs inside games. Unity bindings (a hidden main-thread pump host that survives
+  the game destroying it; reflection binders for optional modules), the loader bridge (settings, logs, plugins,
+  shortcuts), every setting bound with its default and description, `agent.selfTest`, and the release package
+  (`dist/`: the six plugin assemblies, a verified `package.json` and the zip, byte-reproducible; CI uploads it).
+  Verified with BepInEx 5.4.23.5 in a Unity 6 Mono player ([compatibility](docs/compatibility.md)).

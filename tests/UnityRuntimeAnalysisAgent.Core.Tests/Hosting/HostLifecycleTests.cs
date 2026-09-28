@@ -101,6 +101,15 @@ public sealed class HostLifecycleTests : IDisposable
         Assert.Equal(ErrorCodes.InvalidParams, peer.Call(Methods.Batch, "{\"requests\":[{\"method\":\"batch\",\"params\":{\"requests\":[]}}]}").Error!.Code);
         var multiFrame = BatchResult.Read(_test.CallStepping(peer, Methods.Batch, "{\"requests\":[{\"method\":\"time.info\"}],\"sameFrame\":true}").Result, "result");
         Assert.Equal(ErrorCodes.InvalidParams, multiFrame.Results[0].Error!.Code); // a multi-frame method can't share one frame
+
+        var job = _test.Host.Jobs.Start("slow", j =>
+        {
+            j.Cancellation.WaitHandle.WaitOne(5000);
+            return null;
+        });
+        var waiting = BatchResult.Read(_test.CallStepping(peer, Methods.Batch, $"{{\"requests\":[{{\"method\":\"job.wait\",\"params\":{{\"jobId\":\"{job.JobId}\"}}}}],\"sameFrame\":true}}").Result, "result");
+        Assert.Equal(ErrorCodes.InvalidParams, waiting.Results[0].Error!.Code); // nor can a method that waits
+        _test.Host.Jobs.Cancel(job.JobId);
     }
 
     [Fact]

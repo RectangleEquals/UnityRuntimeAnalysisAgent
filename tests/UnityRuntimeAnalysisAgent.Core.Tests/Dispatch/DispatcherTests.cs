@@ -99,7 +99,8 @@ public sealed class DispatcherTests : IDisposable
         var hang = peer.Call(Methods.LogsTail, "{\"how\":\"hang\"}").Error!; // DefaultTimeoutMs = 300
         Assert.Equal(ErrorCodes.Timeout, hang.Code);
 
-        var id = peer.Send(Methods.LogsTail, "{\"how\":\"hang\"}");
+        // A long timeout, so the cancel always arrives first (however busy the machine is).
+        var id = peer.Send(Methods.LogsTail, "{\"how\":\"hang\"}", timeoutMs: 30_000);
         Thread.Sleep(50);
         var cancel = CancelResult.Read(peer.Call(Methods.Cancel, $"{{\"id\":\"{id}\"}}").Result, "result");
         Assert.True(cancel.Cancelled);

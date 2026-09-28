@@ -13,7 +13,7 @@ rules that keep the plugin working across many Unity games. The project is pre-r
 | `src/UnityRuntimeAnalysisAgent.Api` | The small public API that scripts and mods under test compile against. |
 | `src/UnityRuntimeAnalysisAgent.BepInEx5` | The BepInEx 5 plugin entry point that wires everything together. |
 | `tests/*.Core.Tests`, `*.Api.Tests`, `*.Protocol.Tests` | Unit tests. Run anywhere, no game needed. |
-| `tests/*.Integration` | Tests against a real Unity player. Run locally only (see below). |
+| `build/Packager` | Build-time tool that makes the release package (see below). |
 | `tools/AgentClient` | A small client library: connect, authenticate, send requests, receive events. |
 | `tools/AgentConsole` | A developer console for talking to a running agent (built on `AgentClient`). |
 | `external/protocol` | Git submodule with the shared protocol (schemas, fixtures, the `UnityLudometry.Protocol` package). See [its README](../external/README.md). |
@@ -29,21 +29,24 @@ dotnet test -c Release
 ```
 
 - Warnings are errors. A pull request must build with 0 warnings.
-- Machine-specific paths go in a git-ignored `Directory.Build.local.props` at the repo root. Copy
-  `build/Local.props.example` to start. None of these paths are needed for the build or unit tests.
+- The tests here need no game: everything that touches Unity or the loader is behind interfaces that the tests fake.
 
-### Integration tests
+### The package
 
-Integration tests skip themselves unless the environment variable `URAA_INTEGRATION_SETTINGS` points at a JSON
-settings file on your machine. Keep that file outside the repository. Its keys:
+A Release build also produces the release package in `dist/` (git-ignored), through `build/Packager`:
 
-| Key | Meaning |
-|---|---|
-| `unityEditorPath` | Unity editor used to build the fixture game |
-| `fixtureBuildDir` | Where the built fixture player goes |
-| `gameDir` | A Unity game install for read-only scenarios (optional) |
-| `providersDir` | Directory for agent discovery files; `null` uses a fresh temp directory per run |
-| `bepInExZip`, `bepInExZipSha256` | The BepInEx 5 archive to install into test players, and its expected SHA-256 |
+- `dist/BepInEx/plugins/UnityRuntimeAnalysisAgent/`: the six agent assemblies, ready to copy into a game;
+- `dist/package.json`: versions, target and the SHA-256 and size of every file;
+- `dist/UnityRuntimeAnalysisAgent-<version>-bepinex5.zip`: both of the above.
+
+The same source always produces byte-identical output in the same folder. CI builds map source paths, so its package is
+identical wherever it's built; to reproduce it locally, build with
+`dotnet build -c Release -p:ContinuousIntegrationBuild=true`. The build fails if any other assembly appears: BepInEx,
+HarmonyX and UnityEngine come from the game and the loader, never from the package.
+
+To try a build in a game of your own with BepInEx 5 installed, set `GameDir` in a git-ignored
+`Directory.Build.local.props` (copy `build/Local.props.example`) and run
+`dotnet build src/UnityRuntimeAnalysisAgent.BepInEx5 -c Release -t:DeployToGame`.
 
 ## The protocol submodule
 

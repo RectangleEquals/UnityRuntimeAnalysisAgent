@@ -1,3 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- Drives a real Unity player with BepInEx 5 + the agent. Local only: skips unless URAA_INTEGRATION_SETTINGS is set. -->
-</Project>

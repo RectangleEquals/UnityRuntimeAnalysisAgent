@@ -1,0 +1,31 @@
+<Project>
+  <!--
+    Imported by the BepInEx 5 plugin project. After a Release build, the packager turns the build output into dist/:
+    the plugin folder, package.json and the release zip. Debug builds and IDE design-time builds skip it.
+  -->
+  <PropertyGroup>
+    <AgentApiVersion>0.1</AgentApiVersion>
+    <PackagerProject>$(MSBuildThisFileDirectory)Packager\Packager.csproj</PackagerProject>
+    <PackagerAssembly>$(MSBuildThisFileDirectory)Packager\bin\$(Configuration)\net10.0\Packager.dll</PackagerAssembly>
+    <AgentDistDir>$(MSBuildThisFileDirectory)..\dist</AgentDistDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Build order only: the packager must be built before it runs. -->
+    <ProjectReference Include="$(PackagerProject)" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
+  </ItemGroup>
+
+  <Target Name="PackageAgent" AfterTargets="Build" Condition="'$(Configuration)' == 'Release' and '$(DesignTimeBuild)' != 'true'">
+    <Exec Command="dotnet &quot;$(PackagerAssembly)&quot; --plugin-dir &quot;$(OutDir.TrimEnd('\'))&quot; --dist &quot;$(AgentDistDir)&quot; --version &quot;$(Version)&quot; --api &quot;$(AgentApiVersion)&quot; --commit &quot;$(SourceRevisionId)&quot;" />
+  </Target>
+
+  <!-- Developer convenience: copy the built plugin into a local game (GameDir from Directory.Build.local.props). -->
+  <Target Name="DeployToGame" DependsOnTargets="Build">
+    <Error Condition="'$(GameDir)' == ''" Text="Set GameDir in Directory.Build.local.props (see build/Local.props.example)." />
+    <ItemGroup>
+      <_AgentPluginFiles Include="$(AgentDistDir)\BepInEx\plugins\UnityRuntimeAnalysisAgent\*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AgentPluginFiles)" DestinationFolder="$(GameDir)\BepInEx\plugins\UnityRuntimeAnalysisAgent" />
+    <Message Importance="high" Text="Deployed the agent to $(GameDir)." />
+  </Target>
+</Project>

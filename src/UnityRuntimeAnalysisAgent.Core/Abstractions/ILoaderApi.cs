@@ -73,4 +73,10 @@ public interface ILoaderApi
 
     /// <summary>Raised for every line the loader logs.</summary>
     event Action<LoaderLogEntry>? LoaderLog;
+
+    /// <summary>Instantiates a plugin type on a hidden host object (for reloaded mods). Main thread only.</summary>
+    object InstantiatePlugin(Type pluginType);
+
+    /// <summary>Destroys a plugin instance created by <see cref="InstantiatePlugin"/>. Main thread only.</summary>
+    void DestroyPlugin(object instance);
 }

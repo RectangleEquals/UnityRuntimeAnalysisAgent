@@ -42,13 +42,3 @@ Directory.Build.local.props
 *.local.json
 tests/**/local*.json
 
-# Fixture game (Unity project) generated folders
-tests/FixtureGame/[Ll]ibrary/
-tests/FixtureGame/[Tt]emp/
-tests/FixtureGame/[Ll]ogs/
-tests/FixtureGame/[Oo]bj/
-tests/FixtureGame/[Bb]uild/
-tests/FixtureGame/[Bb]uilds/
-tests/FixtureGame/[Uu]ser[Ss]ettings/
-tests/FixtureGame/*.csproj
-tests/FixtureGame/*.sln

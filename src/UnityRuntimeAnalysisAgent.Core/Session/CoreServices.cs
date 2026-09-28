@@ -92,12 +92,12 @@ internal sealed class JobService
     public ProtocolMessage Get(RequestContext context, JobGetParams p) => _jobs.Get(p.JobId);
 
     [RpcMethod(Methods.JobWait, DefaultTimeoutMs = 120_000, MaxTimeoutMs = 600_000)]
-    public ProtocolMessage Wait(RequestContext context, JobWaitParams p)
+    public Deferred Wait(RequestContext context, JobWaitParams p)
     {
         // Answer just before the request's own timeout, so a long wait returns the state instead of TIMEOUT.
         var requestTimeout = context.TimeoutMs ?? 120_000;
         var waitMs = (int)Math.Max(0, Math.Min(p.TimeoutMs ?? DefaultWaitMs, Math.Min(requestTimeout, 600_000) - 1_000));
-        return _jobs.Wait(p.JobId, waitMs, context.Cancellation);
+        return _jobs.WaitDeferred(p.JobId, waitMs, context.Cancellation);
     }
 
     [RpcMethod(Methods.JobCancel)]
@@ -142,59 +142,80 @@ internal sealed class BatchService
     }
 
     [RpcMethod(Methods.Batch, DefaultTimeoutMs = 60_000, MaxTimeoutMs = 600_000)]
-    public ProtocolMessage Batch(RequestContext context, BatchParams p)
+    public Deferred Batch(RequestContext context, BatchParams p)
     {
         if (p.Requests.Any(r => r.Method == Methods.Batch))
         {
             throw ProtocolException.InvalidParams("params.requests", "A batch can't contain another batch.");
         }
 
+        var deferred = new Deferred();
         if (p.SameFrame == true)
         {
             // One main-thread work item runs every request back to back: they all see the same frame.
-            BatchResult? result = null;
-            Exception? failure = null;
-            using var done = new System.Threading.ManualResetEventSlim(false);
-            _pump.Enqueue(new PumpWork(() => Run(context, p, inline: true), r =>
-            {
-                result = (BatchResult)r!;
-                done.Set();
-            }, e =>
-            {
-                failure = e;
-                done.Set();
-            }, context.Cancellation));
-            done.Wait(context.Cancellation);
-            if (failure is not null)
-            {
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-            }
-
-            return result!;
+            _pump.Enqueue(new PumpWork(() => RunInline(context, p), r => deferred.Complete((BatchResult)r!), e => deferred.Fail(e), context.Cancellation));
+            return deferred;
         }
 
-        return Run(context, p, inline: false);
+        // One request after another, each dispatched when the previous one answered; no thread waits in between.
+        var results = new List<BatchItemResult>();
+        var stopped = false;
+        void Next(int i)
+        {
+            while (i < p.Requests.Count && (stopped || context.Cancellation.IsCancellationRequested))
+            {
+                results.Add(Skipped(stopped));
+                i++;
+            }
+
+            if (i == p.Requests.Count)
+            {
+                deferred.Complete(Result(results));
+                return;
+            }
+
+            _dispatcher.Dispatch(ItemContext(context, p.Requests[i], i), outcome =>
+            {
+                results.Add(outcome.Error is { } error ? new BatchItemResult { Error = error } : new BatchItemResult { Result = outcome.Result });
+                stopped = outcome.Error is not null && p.StopOnError == true;
+                Next(i + 1);
+            });
+        }
+
+        Next(0);
+        return deferred;
     }
 
-    private BatchResult Run(RequestContext context, BatchParams p, bool inline)
+    private BatchResult RunInline(RequestContext context, BatchParams p)
     {
         var results = new List<BatchItemResult>();
         var stopped = false;
         for (var i = 0; i < p.Requests.Count; i++)
         {
-            var item = p.Requests[i];
             if (stopped || context.Cancellation.IsCancellationRequested)
             {
-                results.Add(new BatchItemResult { Error = new ProtocolError { Code = ErrorCodes.Cancelled, Message = stopped ? "Skipped after an earlier error (stopOnError)." : "The batch was cancelled." } });
+                results.Add(Skipped(stopped));
                 continue;
             }
 
-            var itemContext = new RequestContext($"{context.Id}#{i}", item.Method, item.Params, context.Context, context.Source, context.Client, context.Connection, context.Cancellation);
-            var outcome = inline ? _dispatcher.InvokeInline(itemContext) : _dispatcher.Invoke(itemContext);
+            var outcome = _dispatcher.InvokeInline(ItemContext(context, p.Requests[i], i));
             results.Add(outcome.Error is { } error ? new BatchItemResult { Error = error } : new BatchItemResult { Result = outcome.Result });
             stopped = outcome.Error is not null && p.StopOnError == true;
         }
 
+        return Result(results);
+    }
+
+    private static RequestContext ItemContext(RequestContext batch, BatchRequest item, int index) =>
+        new($"{batch.Id}#{index}", item.Method, item.Params, batch.Context, batch.Source, batch.Client, batch.Connection, batch.Cancellation);
+
+    private static BatchItemResult Skipped(bool stopped) => new()
+    {
+        Error = new ProtocolError { Code = ErrorCodes.Cancelled, Message = stopped ? "Skipped after an earlier error (stopOnError)." : "The batch was cancelled." },
+    };
+
+    private BatchResult Result(List<BatchItemResult> results)
+    {
         var clock = _pump.Clock;
         return new BatchResult { Results = results, Frame = clock.FrameCount, RealtimeMs = (long)(clock.Realtime * 1000) };
     }

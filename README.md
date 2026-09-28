@@ -22,7 +22,7 @@ It talks only to local tools on your own machine, over an authenticated named pi
 - `git clone --recursive https://github.com/RectangleEquals/UnityRuntimeAnalysisAgent`
 - `dotnet build -c Release`, then `dotnet test`.
 
-Machine-specific paths (a Unity editor for the fixture game, a game folder for developer deploys) go in a local, git-ignored `Directory.Build.local.props`. Copy `build/Local.props.example` to get started.
+A Release build also produces the plugin package in `dist/` ([details](docs/CONTRIBUTING.md#the-package)).
 
 ## Documentation
 - [Contributing](docs/CONTRIBUTING.md): repository layout, building and testing, and the compatibility rules the code follows.

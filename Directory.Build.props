@@ -14,7 +14,9 @@
     <Copyright>Copyright (c) 2026 RectangleEquals</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/RectangleEquals/UnityRuntimeAnalysisAgent</RepositoryUrl>
-    <Version>0.1.0-dev</Version>
+    <!-- The loader needs a numeric plugin version (VersionPrefix); the full version carries the suffix. -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>dev</VersionSuffix>
   </PropertyGroup>
 
   <!-- Shipped assemblies (netstandard2.0): modern C# via source-only polyfills, no runtime dependencies. -->

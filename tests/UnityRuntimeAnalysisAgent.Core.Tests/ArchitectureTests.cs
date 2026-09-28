@@ -73,7 +73,7 @@ public sealed class ArchitectureTests
     [Fact]
     public void Unity_and_Overlay_never_reference_UnityEngine_Input()
     {
-        foreach (var assembly in new[] { typeof(UnityBindingsInfo).Assembly, typeof(OverlayInfo).Assembly })
+        foreach (var assembly in new[] { typeof(UnityRuntimeAnalysisAgent.Unity.ModuleBinder).Assembly, typeof(OverlayInfo).Assembly })
         {
             using var stream = File.OpenRead(assembly.Location);
             using var pe = new PEReader(stream);
