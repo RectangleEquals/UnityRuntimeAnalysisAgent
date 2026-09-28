@@ -15,7 +15,7 @@ rules that keep the plugin working across many Unity games. The project is pre-r
 | `tests/*.Core.Tests`, `*.Api.Tests`, `*.Protocol.Tests` | Unit tests. Run anywhere, no game needed. |
 | `tests/*.Integration` | Tests against a real Unity player. Run locally only (see below). |
 | `tools/AgentConsole` | A developer console for talking to a running agent. |
-| `external/protocol` | Git submodule with the shared protocol (schemas, fixtures, generated DTOs). |
+| `external/protocol` | Git submodule with the shared protocol (schemas, fixtures, the `UnityLudometry.Protocol` package). See [its README](../external/README.md). |
 
 ## Building and testing
 
@@ -44,6 +44,17 @@ settings file on your machine. Keep that file outside the repository. Its keys:
 | `providersDir` | Directory for agent discovery files; `null` uses a fresh temp directory per run |
 | `bepInExZip`, `bepInExZipSha256` | The BepInEx 5 archive to install into test players, and its expected SHA-256 |
 
+## The protocol submodule
+
+The wire protocol (JSON Schemas, golden fixtures and the `UnityLudometry.Protocol` package) comes from the
+UnityLudometryMCP repository through the `external/protocol` submodule, pinned to a protocol tag.
+
+- **The protocol is never changed here.** If agent work needs a protocol change, open an issue or a pull request in
+  the UnityLudometryMCP repository; once a new protocol tag exists, bump the pin (see `external/README.md`).
+- `tests/UnityRuntimeAnalysisAgent.Protocol.Tests` replays every fixture of the pinned protocol, and grows handler
+  conformance checks as features land.
+- A build without the submodule stops with a message telling you to run `git submodule update --init --recursive`.
+
 ## Compatibility rules
 
 The plugin has to load in games built with many Unity versions (2018.1 onwards, Mono backend) next to whatever
@@ -52,10 +63,11 @@ else the player has installed. These rules make that work. The tests enforce the
 - **Shipped assemblies target `netstandard2.0`.** Modern C# syntax is fine: PolySharp supplies the polyfills at
   compile time, without runtime dependencies.
 - **No third-party DLL ships with the plugin.** BepInEx, HarmonyX and UnityEngine are provided by the game and the
-  loader, so they are referenced compile-only (`PrivateAssets="all" ExcludeAssets="runtime"`). Check the
-  `BepInEx5` project's output after changing references.
-- ✔ **Layering.** `Core` must not reference `UnityEngine*`, `BepInEx*` or any other loader. `Api` references only the
-  framework. Unity code goes in `Unity` or `Overlay`, loader code in the loader project.
+  loader, so they are referenced compile-only (`PrivateAssets="all" ExcludeAssets="runtime"`). The only assembly the
+  plugin ships besides its own is `UnityLudometry.Protocol.dll`, the shared protocol package, which has no
+  dependencies. Check the `BepInEx5` project's output after changing references.
+- ✔ **Layering.** `Core` must not reference `UnityEngine*`, `BepInEx*` or any other loader (it may use
+  `UnityLudometry.Protocol`). `Api` and `UnityLudometry.Protocol` reference only the framework. Unity code goes in `Unity` or `Overlay`, loader code in the loader project.
 - **Unity API baseline 2018.1.0.** `Unity` and `Overlay` compile against `UnityEngine.Modules` 2018.1.0, the oldest
   API surface that has everything the agent needs. Code compiled against it binds by name on newer players. Newer
   APIs must be reached through reflection and must degrade gracefully when missing.

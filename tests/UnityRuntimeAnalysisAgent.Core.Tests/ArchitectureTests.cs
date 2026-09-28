@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
+using UnityLudometry.Protocol;
 using UnityRuntimeAnalysisAgent.Api;
 using UnityRuntimeAnalysisAgent.Core;
 using UnityRuntimeAnalysisAgent.Overlay;
@@ -8,7 +9,10 @@ using UnityRuntimeAnalysisAgent.Unity;
 
 namespace UnityRuntimeAnalysisAgent.Core.Tests;
 
-/// <summary>Enforces the assembly layering: loader- and engine-independent Core, dependency-free Api.</summary>
+/// <summary>
+/// Enforces the assembly layering: loader- and engine-independent Core (which may use the protocol package),
+/// dependency-free Api and protocol package.
+/// </summary>
 public sealed class ArchitectureTests
 {
     private static readonly string[] AllowedFrameworkAssemblies = ["netstandard", "mscorlib", "System", "System.Core"];
@@ -27,6 +31,23 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
+    public void Core_references_only_the_framework_the_protocol_package_and_compile_only_HarmonyX()
+    {
+        var references = typeof(AgentInfo).Assembly.GetReferencedAssemblies().Select(a => a.Name!).ToArray();
+        var allowed = AllowedFrameworkAssemblies.Concat(["UnityLudometry.Protocol", "0Harmony"]).ToArray();
+
+        Assert.All(references, name => Assert.Contains(name, allowed));
+    }
+
+    [Fact]
+    public void The_protocol_package_references_only_netstandard()
+    {
+        var references = typeof(ProtocolVersion).Assembly.GetReferencedAssemblies().Select(a => a.Name!).ToArray();
+
+        Assert.Equal(["netstandard"], references);
+    }
+
+    [Fact]
     public void Api_references_only_the_framework()
     {
         var references = typeof(ApiInfo).Assembly.GetReferencedAssemblies().Select(a => a.Name!).ToArray();
@@ -37,7 +58,7 @@ public sealed class ArchitectureTests
     [Fact]
     public void Shipped_assemblies_target_netstandard20()
     {
-        foreach (var assembly in new[] { typeof(AgentInfo).Assembly, typeof(ApiInfo).Assembly })
+        foreach (var assembly in new[] { typeof(AgentInfo).Assembly, typeof(ApiInfo).Assembly, typeof(ProtocolVersion).Assembly })
         {
             var framework = assembly.GetCustomAttribute<System.Runtime.Versioning.TargetFrameworkAttribute>();
             Assert.Equal(".NETStandard,Version=v2.0", framework?.FrameworkName);

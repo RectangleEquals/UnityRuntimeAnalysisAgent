@@ -1,3 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Replays the shared protocol fixtures (external/protocol) once the submodule exists. -->
+  <!-- Replays the pinned protocol's golden fixtures (external/protocol) through its package. -->
+  <PropertyGroup>
+    <ProtocolRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../external/protocol/protocol'))</ProtocolRoot>
+    <ConformanceProject>$(ProtocolRoot)/csharp/UnityLudometry.Protocol.Conformance/UnityLudometry.Protocol.Conformance.csproj</ConformanceProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(ConformanceProject)" />
+    <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ProtocolRoot</_Parameter1>
+      <_Parameter2>$(ProtocolRoot)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <Target Name="CheckProtocolSubmodule" BeforeTargets="PrepareForBuild;CollectPackageReferences" Condition="!Exists('$(ConformanceProject)')">
+    <Error Text="The protocol submodule is missing (external/protocol). Run: git submodule update --init --recursive" />
+  </Target>
 </Project>

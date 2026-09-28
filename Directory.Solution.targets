@@ -1,0 +1,7 @@
+<Project InitialTargets="CheckProtocolSubmodule">
+  <!-- Solution builds only: explain a missing protocol submodule before MSBuild reports missing projects. -->
+  <Target Name="CheckProtocolSubmodule"
+          Condition="!Exists('$(MSBuildThisFileDirectory)external/protocol/protocol/csharp/UnityLudometry.Protocol/UnityLudometry.Protocol.csproj')">
+    <Error Text="The protocol submodule is missing (external/protocol). Clone with --recursive, or run: git submodule update --init --recursive" />
+  </Target>
+</Project>

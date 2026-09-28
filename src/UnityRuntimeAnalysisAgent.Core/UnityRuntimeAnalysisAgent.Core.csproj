@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <RootNamespace>UnityRuntimeAnalysisAgent.Core</RootNamespace>
+    <ProtocolProject>$(MSBuildThisFileDirectory)..\..\external\protocol\protocol\csharp\UnityLudometry.Protocol\UnityLudometry.Protocol.csproj</ProtocolProject>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,6 +12,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The shared protocol (git submodule). UnityLudometry.Protocol.dll ships with the plugin; it has no dependencies. -->
+    <ProjectReference Include="$(ProtocolProject)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="UnityRuntimeAnalysisAgent.Core.Tests" />
   </ItemGroup>
+
+  <Target Name="CheckProtocolSubmodule" BeforeTargets="PrepareForBuild;CollectPackageReferences" Condition="!Exists('$(ProtocolProject)')">
+    <Error Text="The protocol submodule is missing (external/protocol). Run: git submodule update --init --recursive" />
+  </Target>
 </Project>
