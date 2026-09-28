@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -45,7 +44,10 @@ public sealed class Connection : IDisposable
     private readonly int _maxFrameBytes;
     private readonly IAgentLogger _log;
     private readonly Action<Connection, RequestEnvelope> _onRequest;
-    private readonly BlockingCollection<byte[]?> _outbound = new();
+    private readonly LinkedList<Outgoing> _outbound = new();
+    private readonly Dictionary<string, long> _dropped = new(StringComparer.Ordinal);
+    private long _queuedEventBytes;
+    private bool _outboundCompleted;
     private readonly HashSet<string> _subscriptions = new(StringComparer.Ordinal);
     private readonly object _gate = new();
     private Thread? _reader;
@@ -91,8 +93,82 @@ public sealed class Connection : IDisposable
         _reader.Start();
     }
 
-    /// <summary>The next event sequence number of this connection.</summary>
+    /// <summary>The next event sequence number of this connection. Numbers are taken when an event is queued, so an
+    /// event dropped under back-pressure leaves a gap the client can see (batched kinds also count them in <c>dropped</c>).</summary>
     public long NextEventSeq() => Interlocked.Increment(ref _eventSeq);
+
+    /// <summary>The cap on queued, unsent event bytes (<c>Events.MaxQueueBytes</c>). Over it, the oldest queued events are
+    /// dropped and counted. Responses are never dropped.</summary>
+    public long MaxEventQueueBytes { get; set; } = 8 * 1024 * 1024;
+
+    /// <summary>Queued, unsent event bytes.</summary>
+    public long QueuedEventBytes
+    {
+        get
+        {
+            lock (_outbound)
+            {
+                return _queuedEventBytes;
+            }
+        }
+    }
+
+    /// <summary>Queues an event. <paramref name="items"/> is how many items it carries (for the dropped count).</summary>
+    public void SendEvent(string kind, JsonObject parameters, JsonObject? context = null, int items = 1)
+    {
+        lock (_outbound)
+        {
+            if (_outboundCompleted)
+            {
+                return;
+            }
+
+            var frame = new EventEnvelope { Method = kind, Seq = NextEventSeq(), Params = parameters, Context = context }.ToUtf8Bytes();
+            var estimate = frame.Length;
+            if (estimate > _maxFrameBytes)
+            {
+                _log.Warning($"Connection {Id}: dropped a {kind} event of {estimate} bytes (over the frame limit).");
+                _dropped[kind] = (_dropped.TryGetValue(kind, out var tooBig) ? tooBig : 0) + items;
+                return;
+            }
+
+            // Back-pressure: drop the oldest queued events (never responses) until the new one fits.
+            var node = _outbound.First;
+            while (_queuedEventBytes + estimate > MaxEventQueueBytes && node is not null)
+            {
+                var next = node.Next;
+                if (node.Value.EventKind is { } droppedKind)
+                {
+                    _queuedEventBytes -= node.Value.Bytes;
+                    _dropped[droppedKind] = (_dropped.TryGetValue(droppedKind, out var n) ? n : 0) + node.Value.Items;
+                    _outbound.Remove(node);
+                }
+
+                node = next;
+            }
+
+            _outbound.AddLast(new Outgoing(frame, kind, estimate, items));
+            _queuedEventBytes += estimate;
+            Monitor.Pulse(_outbound);
+        }
+    }
+
+    /// <summary>How many items of a kind were dropped under back-pressure since the last call (then resets).</summary>
+    public long TakeDropped(string kind)
+    {
+        lock (_outbound)
+        {
+            if (!_dropped.TryGetValue(kind, out var n))
+            {
+                return 0;
+            }
+
+            _dropped.Remove(kind);
+            return n;
+        }
+    }
+
+
 
     /// <summary>Whether the connection is subscribed to an event kind.</summary>
     public bool IsSubscribed(string kind)
@@ -131,9 +207,16 @@ public sealed class Connection : IDisposable
         }
     }
 
-    /// <summary>Queues an envelope for sending. Responses above the frame limit are replaced by an error.</summary>
+    /// <summary>Queues an envelope for sending. Responses above the frame limit are replaced by an error. Events go
+    /// through <see cref="SendEvent"/> (numbered when written).</summary>
     public void Send(Envelope envelope)
     {
+        if (envelope is EventEnvelope ev)
+        {
+            SendEvent(ev.Method, ev.Params, ev.Context);
+            return;
+        }
+
         var bytes = envelope.ToUtf8Bytes();
         if (bytes.Length > _maxFrameBytes && envelope is ResponseEnvelope response)
         {
@@ -144,12 +227,6 @@ public sealed class Connection : IDisposable
             };
             bytes = ResponseEnvelope.Failure(response.Id, error, response.Context).ToUtf8Bytes();
         }
-        else if (bytes.Length > _maxFrameBytes)
-        {
-            _log.Warning($"Connection {Id}: dropped an event of {bytes.Length} bytes (over the frame limit).");
-            return;
-        }
-
         Enqueue(bytes);
     }
 
@@ -168,12 +245,12 @@ public sealed class Connection : IDisposable
             return;
         }
 
-        try
+        lock (_outbound)
         {
-            _outbound.CompleteAdding();
-        }
-        catch (ObjectDisposedException)
-        {
+            _outboundCompleted = true;
+            _outbound.Clear();
+            _queuedEventBytes = 0;
+            Monitor.PulseAll(_outbound);
         }
 
         try
@@ -199,15 +276,47 @@ public sealed class Connection : IDisposable
     /// <inheritdoc />
     public void Dispose() => Close("disposed");
 
-    private void Enqueue(byte[]? item)
+    private void Enqueue(byte[]? frame)
     {
-        try
+        lock (_outbound)
         {
-            _outbound.Add(item);
+            if (_outboundCompleted)
+            {
+                return; // closed: nothing more is sent
+            }
+
+            _outbound.AddLast(frame is null ? Outgoing.CloseMarker : new Outgoing(frame, null, frame.Length, 0));
+            if (frame is null)
+            {
+                _outboundCompleted = true;
+            }
+
+            Monitor.Pulse(_outbound);
         }
-        catch (InvalidOperationException)
+    }
+
+    private Outgoing? Dequeue()
+    {
+        lock (_outbound)
         {
-            // Closed: nothing more is sent.
+            while (_outbound.Count == 0)
+            {
+                if (_outboundCompleted)
+                {
+                    return null;
+                }
+
+                Monitor.Wait(_outbound);
+            }
+
+            var item = _outbound.First!.Value;
+            _outbound.RemoveFirst();
+            if (item.EventKind is not null)
+            {
+                _queuedEventBytes -= item.Bytes;
+            }
+
+            return item;
         }
     }
 
@@ -294,20 +403,44 @@ public sealed class Connection : IDisposable
         var writer = new FrameWriter(_stream, _maxFrameBytes);
         try
         {
-            foreach (var item in _outbound.GetConsumingEnumerable())
+            while (Dequeue() is { } item)
             {
-                if (item is null)
+                if (item.IsCloseMarker)
                 {
                     Close("closed after the final response");
                     return;
                 }
 
-                writer.WriteFrame(item);
+                writer.WriteFrame(item.Frame!);
             }
         }
         catch (Exception e) when (e is IOException || e is ObjectDisposedException || e is ProtocolException || e is InvalidOperationException)
         {
             Close("writing failed", e);
         }
+    }
+
+    private sealed class Outgoing
+    {
+        public static readonly Outgoing CloseMarker = new(null, null, 0, 0, isCloseMarker: true);
+
+        public Outgoing(byte[]? frame, string? eventKind, long bytes, int items, bool isCloseMarker = false)
+        {
+            Frame = frame;
+            EventKind = eventKind;
+            Bytes = bytes;
+            Items = items;
+            IsCloseMarker = isCloseMarker;
+        }
+
+        public byte[]? Frame { get; }
+
+        public string? EventKind { get; }
+
+        public long Bytes { get; }
+
+        public int Items { get; }
+
+        public bool IsCloseMarker { get; }
     }
 }

@@ -29,7 +29,7 @@ public sealed class AgentHostTests : IDisposable
 
         var environment = AgentEnvironment.ForCurrentProcess();
         environment.UnityVersion = "2021.3.45f1";
-        var host = new AgentHost(config, environment, log ?? new TestLogger(), pipeName: $"uraa-test-{Guid.NewGuid():N}", createPipe);
+        var host = new AgentHost(config, environment, log ?? new TestLogger(), pipeName: $"uraa-test-{Guid.NewGuid():N}", createPipe: createPipe);
         _hosts.Add(host);
         host.Start();
         return host;

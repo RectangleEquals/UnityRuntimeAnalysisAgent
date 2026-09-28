@@ -2,48 +2,81 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using UnityLudometry.Protocol;
-using UnityLudometry.Protocol.Envelopes;
 using UnityLudometry.Protocol.Json;
 using UnityLudometry.Protocol.Messages;
+using UnityRuntimeAnalysisAgent.Core.Abstractions;
 using UnityRuntimeAnalysisAgent.Core.Discovery;
+using UnityRuntimeAnalysisAgent.Core.Dispatch;
+using UnityRuntimeAnalysisAgent.Core.Jobs;
+using UnityRuntimeAnalysisAgent.Core.Runtime;
 using UnityRuntimeAnalysisAgent.Core.Session;
 using UnityRuntimeAnalysisAgent.Core.Transport;
 
 namespace UnityRuntimeAnalysisAgent.Core.Hosting;
 
 /// <summary>
-/// The composition root: reads the configuration, starts the transport and the session handling, publishes the discovery
-/// file, and shuts everything down again (idempotently).
+/// The composition root. It builds every component from the configuration and wires them together. <see cref="Start"/>
+/// brings them up in dependency order (pump, event delivery, transport, discovery file). <see cref="Shutdown"/> removes
+/// every side effect, idempotently: it cancels jobs, runs the cleanups later components registered (patches, hooks,
+/// subscriptions…) in reverse order, flushes and stops events, closes connections and the transport, deletes the
+/// discovery file, and finally destroys the pump host.
 /// </summary>
 public sealed class AgentHost : IDisposable
 {
     private readonly AgentConfig _config;
     private readonly AgentEnvironment _environment;
-    private readonly IAgentLogger _log;
+    private readonly IUnityApi? _unity;
     private readonly List<Connection> _connections = new();
+    private readonly List<(string Name, Action Action)> _cleanups = new();
     private readonly object _gate = new();
     private readonly DiscoveryPublisher _discovery;
     private readonly Func<string, IAgentLogger, ITransport>? _createPipe;
+    private readonly PumpWatchdog _watchdog;
     private ITransport? _transport;
+    private bool _started;
     private bool _stopped;
 
     /// <summary>Creates the host (nothing runs until <see cref="Start"/>).</summary>
+    /// <param name="config">The configuration (usually the loader's config file).</param>
+    /// <param name="environment">Versions and process facts.</param>
+    /// <param name="log">The agent's log.</param>
+    /// <param name="unity">Unity access. Without it there is no main-thread pump: main-thread methods fail with <c>MAIN_THREAD_UNAVAILABLE</c>.</param>
+    /// <param name="loader">The loader, when running inside one.</param>
+    /// <param name="pipeName">The pipe name (default <c>ulm-agent-&lt;pid&gt;</c>).</param>
     /// <param name="createPipe">Test hook: a custom pipe transport factory (e.g. to force the TCP fallback).</param>
-    public AgentHost(IConfigSource config, AgentEnvironment environment, IAgentLogger log, string? pipeName = null,
-        Func<string, IAgentLogger, ITransport>? createPipe = null)
+    public AgentHost(IConfigSource config, AgentEnvironment environment, IAgentLogger log, IUnityApi? unity = null, ILoaderApi? loader = null,
+        string? pipeName = null, Func<string, IAgentLogger, ITransport>? createPipe = null)
     {
         _config = AgentConfig.Read(config);
         _environment = environment;
-        _log = log;
+        _unity = unity;
+        Loader = loader;
+        Log = new LevelFilteringLogger(log, _config.LogLevel);
         _createPipe = createPipe;
         PipeName = pipeName ?? $"ulm-agent-{environment.ProcessId}";
         Token = SessionToken.Generate();
-        _discovery = new DiscoveryPublisher(log);
-        Session = new SessionHandler(Token, BuildAgentInfo, CompleteCapabilities);
+        _discovery = new DiscoveryPublisher(Log);
+
+        Modes = new ModeController(_config.Mode, Log);
+        Capabilities = new CapabilitySet();
+        Pump = new MainThreadPump(unity ?? HeadlessUnity.Instance, _config.FrameBudgetMs, Log);
+        _watchdog = new PumpWatchdog(Pump, unity ?? HeadlessUnity.Instance, _config.StallMs, Log);
+        Activity = new ActivityFeed(1000, Log);
+        Events = new EventHub(Connections, Log);
+        Events.EmittedKinds.Add(EventKinds.JobProgress);
+        Events.EmittedKinds.Add(EventKinds.JobFinished);
+        Jobs = new JobManager(_config.MaxConcurrentJobs, Events, Pump, Log);
+        Dispatcher = new Dispatcher(Modes, Capabilities, Pump, Activity, Log);
+        Session = new SessionHandler(Token, Dispatcher, BuildAgentInfo);
+        Dispatcher.Register(new SessionService(this));
+        Dispatcher.Register(new JobService(Jobs));
+        Dispatcher.Register(new ActivityService(Activity));
+        Dispatcher.Register(new BatchService(Dispatcher, Pump));
         foreach (var warning in _config.Warnings)
         {
-            log.Warning(warning);
+            Log.Warning(warning);
         }
     }
 
@@ -53,10 +86,37 @@ public sealed class AgentHost : IDisposable
     /// <summary>The effective configuration.</summary>
     public AgentConfig Config => _config;
 
+    /// <summary>The agent's log (its level follows <c>Agent.LogLevel</c> and <c>agent.logLevel</c>).</summary>
+    public LevelFilteringLogger Log { get; }
+
+    /// <summary>The loader, if any.</summary>
+    public ILoaderApi? Loader { get; }
+
     /// <summary>The pipe name the pipe transport uses.</summary>
     public string PipeName { get; }
 
-    /// <summary>The protocol handling (later components register their methods here).</summary>
+    /// <summary>The permission mode.</summary>
+    public ModeController Modes { get; }
+
+    /// <summary>Optional capabilities (module binders report here).</summary>
+    public CapabilitySet Capabilities { get; }
+
+    /// <summary>The main-thread pump.</summary>
+    public MainThreadPump Pump { get; }
+
+    /// <summary>The activity and audit feed.</summary>
+    public ActivityFeed Activity { get; }
+
+    /// <summary>Event delivery.</summary>
+    public EventHub Events { get; }
+
+    /// <summary>Background jobs.</summary>
+    public JobManager Jobs { get; }
+
+    /// <summary>Method dispatch (later components register their services here).</summary>
+    public Dispatcher Dispatcher { get; }
+
+    /// <summary>The connection-facing request handling.</summary>
     public SessionHandler Session { get; }
 
     /// <summary>The running transport (after <see cref="Start"/>).</summary>
@@ -77,42 +137,48 @@ public sealed class AgentHost : IDisposable
         }
     }
 
-    /// <summary>Starts listening and publishes the discovery file.</summary>
-    public void Start()
+    /// <summary>Registers a cleanup to run at shutdown (in reverse order of registration), e.g. removing patches.</summary>
+    public void RegisterCleanup(string name, Action action)
     {
-        _transport = TransportFactory.Start(_config.Transport, PipeName, _log, OnAccepted, _createPipe);
-        _log.Info(_transport.Kind == "pipe" ? $"Listening on pipe {_transport.PipeName}." : $"Listening on 127.0.0.1:{_transport.Port}.");
-        _discovery.Publish(_config.ProvidersDir, BuildDiscoveryFile());
-    }
-
-    /// <summary>Sends an event to every authenticated connection subscribed to its kind.</summary>
-    public void Publish(string kind, ProtocolMessage payload, JsonObject? context = null)
-    {
-        if (EventRegistry.Find(kind) is null)
-        {
-            throw new ArgumentException($"{kind} is not an event kind of the protocol.", nameof(kind));
-        }
-
-        Connection[] targets;
         lock (_gate)
         {
-            targets = _connections.ToArray();
-        }
-
-        var json = payload.ToJson();
-        foreach (var connection in targets)
-        {
-            if (connection.Authenticated && connection.IsSubscribed(kind))
-            {
-                connection.Send(new EventEnvelope { Method = kind, Seq = connection.NextEventSeq(), Params = json, Context = context });
-            }
+            _cleanups.Add((name, action));
         }
     }
 
-    /// <summary>Stops listening, closes every connection and deletes the discovery file (idempotent).</summary>
+    /// <summary>Starts the pump (when Unity is available), event delivery, the transport and the discovery file.</summary>
+    public void Start()
+    {
+        lock (_gate)
+        {
+            if (_started)
+            {
+                return;
+            }
+
+            _started = true;
+        }
+
+        if (_unity is not null)
+        {
+            Pump.Start();
+            _watchdog.Start();
+        }
+
+        Events.Start();
+        _transport = TransportFactory.Start(_config.Transport, PipeName, Log, OnAccepted, _createPipe);
+        _discovery.Publish(_config.ProvidersDir, BuildDiscoveryFile());
+        Log.Info($"Agent ready: {_environment.AgentVersion}, protocol {ProtocolVersion.Text}, mode {AgentModes.ToWire(Modes.Current)}, "
+            + (_transport.Kind == "pipe" ? $"pipe {_transport.PipeName}." : $"tcp 127.0.0.1:{_transport.Port}."));
+    }
+
+    /// <summary>Sends an event to every connection subscribed to its kind.</summary>
+    public void Publish(string kind, ProtocolMessage payload, JsonObject? context = null) => Events.Publish(kind, payload, context);
+
+    /// <summary>Removes every side effect of the agent (idempotent).</summary>
     public void Shutdown()
     {
-        Connection[] open;
+        List<(string Name, Action Action)> cleanups;
         lock (_gate)
         {
             if (_stopped)
@@ -121,32 +187,148 @@ public sealed class AgentHost : IDisposable
             }
 
             _stopped = true;
-            open = _connections.ToArray();
+            cleanups = Enumerable.Reverse(_cleanups).ToList();
         }
 
-        _discovery.Dispose();
-        _transport?.Dispose();
-        foreach (var connection in open)
+        Step("cancel jobs", () => Jobs.CancelAll());
+        foreach (var (name, action) in cleanups)
         {
-            connection.Close("agent shutdown");
+            Step(name, action);
         }
 
-        _log.Info("Agent stopped.");
+        Step("stop events", Events.Dispose);
+        Step("close connections", () =>
+        {
+            _transport?.Dispose();
+            foreach (var connection in Connections())
+            {
+                connection.Close("agent shutdown");
+            }
+        });
+        Step("delete the discovery file", _discovery.Dispose);
+        Step("stop the watchdog", _watchdog.Dispose);
+        Step("destroy the pump host", Pump.Stop);
+        Log.Info("Agent stopped.");
     }
 
     /// <inheritdoc />
     public void Dispose() => Shutdown();
 
-    private void OnAccepted(Stream stream, Action release)
+    internal AgentInfo BuildAgentInfo()
     {
-        var connection = new Connection(stream, _transport?.Kind ?? "?", _config.MaxFrameBytes, _log, Session.Handle);
+        var pumpAlive = Pump.IsStarted && (_unity?.IsPumpHostAlive ?? false);
+        return new AgentInfo
+        {
+            AgentVersion = _environment.AgentVersion,
+            GitCommit = _environment.GitCommit,
+            Protocol = ProtocolVersionInfo.Current,
+            Pid = _environment.ProcessId,
+            ProcessName = _environment.ProcessName,
+            UnityVersion = _environment.UnityVersion,
+            ScriptingBackend = _environment.ScriptingBackend,
+            Platform = _environment.Platform,
+            Loader = new LoaderInfo { Name = Loader?.LoaderName ?? _environment.LoaderName, Version = Loader?.LoaderVersion ?? _environment.LoaderVersion },
+            Mode = Modes.Current,
+            Transport = _transport?.Kind ?? "pipe",
+            StartedAt = FormatTimestamp(Session.StartedUtc),
+            UptimeMs = (long)(DateTime.UtcNow - Session.StartedUtc).TotalMilliseconds,
+            Limits = LimitsJson(),
+            Health = new AgentHealth
+            {
+                Pump = new PumpHealth
+                {
+                    Alive = pumpAlive,
+                    LastTickFrame = Pump.HasTicked ? Pump.Clock.FrameCount : null,
+                    QueueLength = Pump.QueueLength,
+                    StalledMs = _watchdog.StalledMs,
+                    RecreatedCount = Pump.RecreatedCount,
+                },
+                Connections = ConnectionCount,
+                JobsRunning = Jobs.Running,
+                // Filled in by the components that own these as they arrive; none exist yet.
+                HooksActive = 0,
+                PatchesActive = 0,
+                Handles = 0,
+                AssembliesLoadedByAgent = 0,
+            },
+        };
+    }
+
+    internal AgentCapabilities BuildCapabilities()
+    {
+        var methods = Dispatcher.Methods.Select(m => new MethodCapability
+        {
+            Name = m.Descriptor.Name,
+            Thread = m.Descriptor.Thread switch { MethodThread.Main => "main", MethodThread.Mixed => "mixed", _ => "any" },
+            MinMode = m.Descriptor.MinMode,
+            Mutating = m.Descriptor.Mutating,
+            Job = m.Descriptor.Job,
+            DefaultTimeoutMs = m.DefaultTimeoutMs,
+            MaxTimeoutMs = m.MaxTimeoutMs,
+            Requires = m.Descriptor.Requires.Count > 0 ? m.Descriptor.Requires.ToList() : null,
+        }).ToList();
+        methods.Add(new MethodCapability { Name = Methods.Hello, Thread = "any", MinMode = AgentMode.ReadOnly });
+        return new AgentCapabilities
+        {
+            AgentVersion = _environment.AgentVersion,
+            ApiVersion = _environment.ApiVersion,
+            Protocol = ProtocolVersionInfo.Current,
+            Methods = methods.OrderBy(m => m.Name, StringComparer.Ordinal).ToList(),
+            EventKinds = Events.EmittedKinds.ToList(),
+            Modules = Capabilities.Modules(),
+            Limits = LimitsJson(),
+        };
+    }
+
+    private IReadOnlyList<Connection> Connections()
+    {
+        lock (_gate)
+        {
+            return _connections.ToArray();
+        }
+    }
+
+    private void Step(string name, Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception e)
+        {
+            Log.Error($"Shutdown step '{name}' failed.", e);
+        }
+    }
+
+    private JsonObject LimitsJson()
+    {
+        var limits = new JsonObject();
+        foreach (var pair in _config.Limits())
+        {
+            limits.Add(pair.Key, new JsonNumber(pair.Value));
+        }
+
+        return limits;
+    }
+
+    private void OnAccepted(Stream stream, Action release) => AcceptConnection(stream, _transport?.Kind ?? "?", release);
+
+    /// <summary>Serves a client over an already-connected stream (the transports use this; so can in-process clients and
+    /// tests). Returns the connection, or null if the host has stopped. <paramref name="release"/> runs when it closes.</summary>
+    public Connection? AcceptConnection(Stream stream, string transportKind, Action? release = null)
+    {
+        release ??= () => { };
+        var connection = new Connection(stream, transportKind, _config.MaxFrameBytes, Log, Session.Handle)
+        {
+            MaxEventQueueBytes = _config.MaxEventQueueBytes,
+        };
         lock (_gate)
         {
             if (_stopped)
             {
                 stream.Dispose();
                 release();
-                return;
+                return null;
             }
 
             _connections.Add(connection);
@@ -159,9 +341,11 @@ public sealed class AgentHost : IDisposable
                 _connections.Remove(connection);
             }
 
+            Session.CancelAll(connection);
             release();
         };
         connection.Start();
+        return connection;
     }
 
     private DiscoveryFile BuildDiscoveryFile() => new()
@@ -176,53 +360,35 @@ public sealed class AgentHost : IDisposable
         Token = Token.Value,
         Protocol = ProtocolVersionInfo.Current,
         AgentVersion = _environment.AgentVersion,
-        Loader = new LoaderInfo { Name = _environment.LoaderName, Version = _environment.LoaderVersion },
+        Loader = new LoaderInfo { Name = Loader?.LoaderName ?? _environment.LoaderName, Version = Loader?.LoaderVersion ?? _environment.LoaderVersion },
         UnityVersion = _environment.UnityVersion,
-        Mode = _config.Mode,
+        Mode = Modes.Current,
         StartedAt = FormatTimestamp(Session.StartedUtc),
     };
 
-    private AgentInfo BuildAgentInfo()
+    private static string FormatTimestamp(DateTime utc) => utc.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+
+    /// <summary>Stands in for Unity when the host runs without it (tools, tests): the pump never starts.</summary>
+    private sealed class HeadlessUnity : IUnityApi
     {
-        int connections;
-        lock (_gate)
+        public static readonly HeadlessUnity Instance = new();
+
+        public bool IsPumpHostAlive => false;
+
+        public void CreatePumpHost(Action tick, Action endOfFrame)
         {
-            connections = _connections.Count;
         }
 
-        return new AgentInfo
+        public void RecreatePumpHost()
         {
-            AgentVersion = _environment.AgentVersion,
-            GitCommit = _environment.GitCommit,
-            Protocol = ProtocolVersionInfo.Current,
-            Pid = _environment.ProcessId,
-            ProcessName = _environment.ProcessName,
-            UnityVersion = _environment.UnityVersion,
-            ScriptingBackend = _environment.ScriptingBackend,
-            Platform = _environment.Platform,
-            Loader = new LoaderInfo { Name = _environment.LoaderName, Version = _environment.LoaderVersion },
-            Mode = _config.Mode,
-            Transport = _transport?.Kind ?? "pipe",
-            StartedAt = FormatTimestamp(Session.StartedUtc),
-            UptimeMs = (long)(DateTime.UtcNow - Session.StartedUtc).TotalMilliseconds,
-            Limits = new JsonObject(),
-            // The main-thread pump arrives with the dispatcher; until then it reports as not running.
-            Health = new AgentHealth
-            {
-                Pump = new PumpHealth { Alive = false, LastTickFrame = null, QueueLength = 0, StalledMs = 0, RecreatedCount = 0 },
-                Connections = connections,
-            },
-        };
-    }
+        }
 
-    private AgentCapabilities CompleteCapabilities(AgentCapabilities capabilities)
-    {
-        capabilities.AgentVersion = _environment.AgentVersion;
-        capabilities.ApiVersion = _environment.ApiVersion;
-        capabilities.Protocol = ProtocolVersionInfo.Current;
-        capabilities.Limits = new JsonObject();
-        return capabilities;
-    }
+        public void DestroyPumpHost()
+        {
+        }
 
-    private static string FormatTimestamp(DateTime utc) => utc.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+        public FrameTime ReadFrameTime() => default;
+
+        public bool IsDestroyed(object unityObject) => unityObject is null;
+    }
 }

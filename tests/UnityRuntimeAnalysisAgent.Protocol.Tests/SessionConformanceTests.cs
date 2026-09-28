@@ -10,13 +10,18 @@ using UnityRuntimeAnalysisAgent.Core.Hosting;
 namespace UnityRuntimeAnalysisAgent.Protocol.Tests;
 
 /// <summary>
-/// Sends the pinned protocol's session fixtures (handshake, liveness, info, capabilities, cancel, subscriptions) to a real
-/// in-process agent and checks its responses: same outcome and error code as the fixture, results valid against the schemas,
-/// and the connection closed after a failed handshake.
+/// Sends the pinned protocol's fixtures of every method this build implements (the session, modes, log level, batch, jobs
+/// and the activity feed) to a real in-process agent and checks its responses: same outcome and error code as the fixture,
+/// results valid against the schemas, and the connection closed after a failed handshake. Events the agent emits are
+/// validated against their schemas too.
 /// </summary>
 public sealed class SessionConformanceTests : IDisposable
 {
-    private static readonly string[] SessionGroups = ["hello", "ping", "agent.info", "agent.capabilities", "cancel", "events.subscribe", "events.unsubscribe", "_generic"];
+    private static readonly string[] SessionGroups =
+    [
+        "hello", "ping", "agent.info", "agent.capabilities", "cancel", "events.subscribe", "events.unsubscribe", "_generic",
+        "agent.setMode", "agent.logLevel", "batch", "job.get", "job.wait", "job.cancel", "job.list", "activity.list", "activity.get",
+    ];
 
     private static readonly Lazy<IReadOnlyDictionary<string, FixtureCase>> Fixtures = new(() =>
         FixtureCatalog.Load(Path.Combine(ProtocolSchemas.Root, "fixtures", "agent")).Where(f => SessionGroups.Contains(f.Group)).ToDictionary(f => f.Id));
@@ -27,9 +32,11 @@ public sealed class SessionConformanceTests : IDisposable
     public SessionConformanceTests()
     {
         var config = new DictionaryConfigSource().Set(AgentConfig.TransportModeKey, "tcp").Set(AgentConfig.ProvidersDirKey, _providers);
-        _host = new AgentHost(config, AgentEnvironment.ForCurrentProcess(), NullAgentLogger.Instance);
+        _host = new AgentHost(config, AgentEnvironment.ForCurrentProcess(), NullAgentLogger.Instance, _unity);
         _host.Start();
     }
+
+    private readonly TickingUnity _unity = new();
 
     public static TheoryData<string> SessionFixtureIds => new(Fixtures.Value.Keys.Order(StringComparer.Ordinal));
 
@@ -46,6 +53,22 @@ public sealed class SessionConformanceTests : IDisposable
         if (!handshake)
         {
             Assert.Null(peer.Call(Hello(_host.Token.Value)).Error);
+        }
+
+        // State the fixtures refer to: job j-1 (finished, so waits return at once) and activity entry 1.
+        if (fixture.Group.StartsWith("job.", StringComparison.Ordinal))
+        {
+            var job = _host.Jobs.Start("survey", j =>
+            {
+                j.Progress("scan", 1, 1, "done");
+                return null;
+            });
+            Assert.Equal("j-1", job.JobId);
+            _host.Jobs.Wait(job.JobId, 5000, CancellationToken.None);
+        }
+        else if (fixture.Group.StartsWith("activity.", StringComparison.Ordinal))
+        {
+            Assert.Null(peer.Call(Ping()).Error);
         }
 
         var response = peer.Call(WithToken(request, _host.Token.Value));
@@ -69,6 +92,29 @@ public sealed class SessionConformanceTests : IDisposable
         else
         {
             Assert.Null(peer.Call(Ping()).Error); // everything else keeps it open
+        }
+    }
+
+    [Fact]
+    public void Job_events_match_their_schemas()
+    {
+        using var peer = new Peer(_host.Transport!.Port!.Value);
+        Assert.Null(peer.Call(Hello(_host.Token.Value)).Error);
+        Assert.Null(peer.Call(Request(Methods.EventsSubscribe, "{\"kinds\":[\"job.progress\",\"job.finished\"]}")).Error);
+        _host.Jobs.Start("survey", j =>
+        {
+            j.Progress("scan", 1, 10, "first");
+            return null;
+        }, (JsonObject)JsonValue.Parse("{\"finding\":\"F-1\"}"));
+
+        var progress = peer.ReceiveEvent(EventKinds.JobProgress);
+        var finished = peer.ReceiveEvent(EventKinds.JobFinished);
+        foreach (var ev in new[] { progress, finished })
+        {
+            var problems = ProtocolSchemas.Validate(JsonValue.Parse(ev.ToUtf8Bytes()).ToString(), "envelope.schema.json").ToList();
+            problems.AddRange(ProtocolSchemas.Validate(ev.Params.ToString(), $"events/{ev.Method}.schema.json#/$defs/params"));
+            Assert.True(problems.Count == 0, ev.Method + ": " + string.Join(Environment.NewLine, problems));
+            Assert.Equal("{\"finding\":\"F-1\"}", ev.Context!.ToString());
         }
     }
 
@@ -121,6 +167,7 @@ public sealed class SessionConformanceTests : IDisposable
     public void Dispose()
     {
         _host.Shutdown();
+        _unity.Dispose();
         if (Directory.Exists(_providers))
         {
             Directory.Delete(_providers, recursive: true);
@@ -141,10 +188,46 @@ public sealed class SessionConformanceTests : IDisposable
             _writer = new FrameWriter(_tcp.GetStream());
         }
 
+        private readonly List<EventEnvelope> _events = new();
+
         public ResponseEnvelope Call(JsonObject request)
         {
             _writer.WriteFrame(request.ToUtf8Bytes());
-            return Assert.IsType<ResponseEnvelope>(Receive());
+            while (true)
+            {
+                var envelope = Receive();
+                if (envelope is EventEnvelope ev)
+                {
+                    _events.Add(ev);
+                    continue;
+                }
+
+                return Assert.IsType<ResponseEnvelope>(envelope);
+            }
+        }
+
+        public EventEnvelope ReceiveEvent(string kind)
+        {
+            var queued = _events.FirstOrDefault(e => e.Method == kind);
+            if (queued is not null)
+            {
+                _events.Remove(queued);
+                return queued;
+            }
+
+            while (true)
+            {
+                var envelope = Receive() ?? throw new InvalidOperationException("closed");
+                if (envelope is EventEnvelope ev && ev.Method == kind)
+                {
+                    return ev;
+                }
+
+                if (envelope is EventEnvelope other)
+                {
+                    _events.Add(other);
+                }
+            }
         }
 
         public Envelope? Receive()
@@ -160,5 +243,42 @@ public sealed class SessionConformanceTests : IDisposable
         }
 
         public void Dispose() => _tcp.Dispose();
+    }
+
+    /// <summary>A minimal Unity stand-in: the pump host ticks on a timer (about 200 frames per second).</summary>
+    private sealed class TickingUnity : UnityRuntimeAnalysisAgent.Core.Abstractions.IUnityApi, IDisposable
+    {
+        private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+        private Timer? _timer;
+        private long _frame;
+
+        public bool IsPumpHostAlive => _timer is not null;
+
+        public void CreatePumpHost(Action tick, Action endOfFrame) => _timer = new Timer(_ =>
+        {
+            Interlocked.Increment(ref _frame);
+            tick();
+            endOfFrame();
+        }, null, 5, 5);
+
+        public void RecreatePumpHost()
+        {
+        }
+
+        public void DestroyPumpHost() => Dispose();
+
+        public UnityRuntimeAnalysisAgent.Core.Abstractions.FrameTime ReadFrameTime()
+        {
+            var seconds = _clock.Elapsed.TotalSeconds;
+            return new(Interlocked.Read(ref _frame), seconds, seconds, seconds, 1, 0.005);
+        }
+
+        public bool IsDestroyed(object unityObject) => false;
+
+        public void Dispose()
+        {
+            _timer?.Dispose();
+            _timer = null;
+        }
     }
 }

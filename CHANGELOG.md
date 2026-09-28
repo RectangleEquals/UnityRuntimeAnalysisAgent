@@ -9,3 +9,10 @@
   `agent.capabilities`, `cancel` and event subscriptions, and an atomically written discovery file.
 - `tools/AgentClient` (a small client library) and `tools/AgentConsole` (a developer console for talking to a running
   agent).
+- The core runtime: method dispatch with mode and capability checks, timeouts and `cancel`; a main-thread pump that runs
+  work within a per-frame budget, with multi-frame routines and a watchdog; background jobs (`job.get`, `job.wait`,
+  `job.cancel`, `job.list`, `job.progress` and `job.finished` events) and verified NDJSON output files; batched,
+  throttled events with back-pressure that never drops replies; `batch` (optionally within one frame); the activity feed
+  and audit log (`activity.list`, `activity.get`); `agent.setMode` (lower only) and `agent.logLevel`; and the settings
+  `Pump.FrameBudgetMs`, `Pump.StallMs`, `Jobs.MaxConcurrent` and `Events.MaxQueueBytes`
+  ([configuration](docs/configuration.md)).

@@ -81,6 +81,30 @@ Without a command it reads commands from the console:
 A command after the options runs once and exits (`... --discovery <file> send ping`). `--pipe <name> --token <hex>`
 or `--tcp <port> --token <hex>` connect without a discovery file, and `--raw` prints compact JSON.
 
+## How the core works
+
+`src/UnityRuntimeAnalysisAgent.Core` never touches Unity or the loader directly: it talks to them through
+`Abstractions/IUnityApi` and `Abstractions/ILoaderApi`, which the Unity and loader projects implement and tests fake
+(`tests/…Core.Tests/Support/Fakes.cs`: `FakeUnityApi.StepFrames(n)` advances frames and time by hand).
+
+- **Methods** are implemented as `[RpcMethod("name")]` methods on a service object registered with
+  `AgentHost.Dispatcher.Register(service)`. The name must be a protocol method; its thread, required mode, job flag,
+  mutating flag and required modules come from the protocol, and the attribute only sets the timeouts. A method takes
+  `(RequestContext context, TParams parameters)` and returns the protocol result message, or throws
+  `ProtocolException` (see `Dispatch/AgentErrors.cs`) for an expected failure. Anything else it throws becomes
+  `INTERNAL` (logged in full); exceptions from game code it invoked are wrapped with `AgentErrors.Game(e)` and become
+  `GAME_EXCEPTION`.
+- **Main-thread methods** run in the game's frames through `Runtime/MainThreadPump`, within `Pump.FrameBudgetMs`. A
+  method that needs several frames returns an iterator: it yields `PumpWait.NextFrame`, `Frames(n)`, `Realtime(ms)`,
+  `Until(predicate, timeoutMs)` or `EndOfFrame`, then yields its result. Never block the main thread.
+- **Long operations** are jobs: `AgentHost.Jobs.Start(kind, body)` returns the job reference at once and runs `body` on a
+  worker thread. The body reports progress, observes `Cancellation`, and uses `RunOnMain(...)` for the parts that touch
+  Unity. Output files go through `Jobs/NdjsonFileWriter`, to the path the caller chose.
+- **Events** go through `AgentHost.Events`: `Publish` for ordinary kinds, `PublishItem` for the high-rate kinds that
+  are delivered in batches.
+- **Shutdown** removes everything the agent did: a component that changes the game registers the undo with
+  `AgentHost.RegisterCleanup`.
+
 ## Compatibility rules
 
 The plugin has to load in games built with many Unity versions (2018.1 onwards, Mono backend) next to whatever

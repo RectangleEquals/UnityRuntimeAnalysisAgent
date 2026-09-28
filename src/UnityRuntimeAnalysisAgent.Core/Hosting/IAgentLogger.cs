@@ -41,6 +41,36 @@ public static class AgentLoggerExtensions
     public static void Error(this IAgentLogger log, string message, Exception? exception = null) => log.Log(AgentLogLevel.Error, message, exception);
 }
 
+/// <summary>Passes entries at or above <see cref="MinLevel"/> on to another logger (<c>Agent.LogLevel</c>, <c>agent.logLevel</c>).</summary>
+public sealed class LevelFilteringLogger : IAgentLogger
+{
+    private readonly IAgentLogger _inner;
+    private int _minLevel;
+
+    /// <summary>Wraps a logger.</summary>
+    public LevelFilteringLogger(IAgentLogger inner, AgentLogLevel minLevel)
+    {
+        _inner = inner;
+        _minLevel = (int)minLevel;
+    }
+
+    /// <summary>The least level written.</summary>
+    public AgentLogLevel MinLevel
+    {
+        get => (AgentLogLevel)System.Threading.Volatile.Read(ref _minLevel);
+        set => System.Threading.Volatile.Write(ref _minLevel, (int)value);
+    }
+
+    /// <inheritdoc />
+    public void Log(AgentLogLevel level, string message, Exception? exception = null)
+    {
+        if (level >= MinLevel)
+        {
+            _inner.Log(level, message, exception);
+        }
+    }
+}
+
 /// <summary>A logger that discards everything.</summary>
 public sealed class NullAgentLogger : IAgentLogger
 {

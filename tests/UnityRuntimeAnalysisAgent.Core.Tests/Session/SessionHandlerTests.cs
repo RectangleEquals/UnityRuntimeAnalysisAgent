@@ -1,47 +1,28 @@
 using UnityLudometry.Protocol;
-using UnityLudometry.Protocol.Envelopes;
-using UnityLudometry.Protocol.Json;
 using UnityLudometry.Protocol.Messages;
-using UnityRuntimeAnalysisAgent.Core.Session;
 using UnityRuntimeAnalysisAgent.Core.Tests.Support;
 using UnityRuntimeAnalysisAgent.Core.Transport;
 
 namespace UnityRuntimeAnalysisAgent.Core.Tests.Session;
 
-public sealed class SessionHandlerTests
+/// <summary>The handshake rules and the session methods, against a real host over in-memory connections.</summary>
+public sealed class SessionHandlerTests : IDisposable
 {
-    private readonly SessionToken _token = SessionToken.Generate();
-
-    private (SessionHandler Handler, Connection Connection, WirePeer Peer) Open()
-    {
-        var handler = new SessionHandler(_token, () => new AgentInfo { AgentVersion = "0.1.0", Mode = AgentMode.ReadOnly, ProcessName = "Test" },
-            c =>
-            {
-                c.AgentVersion = "0.1.0";
-                c.ApiVersion = "0.1";
-                c.Protocol = ProtocolVersionInfo.Current;
-                return c;
-            });
-        var (agentSide, clientSide) = MemoryDuplex.CreatePair();
-        var connection = new Connection(agentSide, "memory", 1 << 20, new TestLogger(), handler.Handle);
-        connection.Start();
-        return (handler, connection, new WirePeer(clientSide));
-    }
+    private readonly TestHost _test = new();
 
     private string Hello(string? token = null, int major = ProtocolVersion.Major, int minor = ProtocolVersion.Minor) =>
-        $"{{\"token\":\"{token ?? _token.Value}\",\"client\":{{\"name\":\"test\",\"version\":\"1\"}},\"protocol\":{{\"major\":{major},\"minor\":{minor}}}}}";
+        $"{{\"token\":\"{token ?? _test.Host.Token.Value}\",\"client\":{{\"name\":\"test\",\"version\":\"1\"}},\"protocol\":{{\"major\":{major},\"minor\":{minor}}}}}";
 
     [Fact]
-    public void A_valid_hello_returns_agent_info_and_authenticates()
+    public void A_valid_hello_returns_agent_info()
     {
-        var (_, connection, peer) = Open();
+        var peer = _test.Connect(hello: false);
         var response = peer.Call(Methods.Hello, Hello(), "{\"task\":\"t\"}");
         Assert.False(response.IsError);
-        Assert.Equal("0.1.0", AgentInfo.Read(response.Result, "result").AgentVersion);
+        var info = AgentInfo.Read(response.Result, "result");
+        Assert.Equal(AgentMode.ReadOnly, info.Mode);
         Assert.Equal("{\"task\":\"t\"}", response.Context!.ToString());
-        Assert.True(connection.Authenticated);
-        Assert.Equal("test 1", connection.ClientName);
-        connection.Dispose();
+        Assert.False(peer.Call(Methods.Hello, Hello()).IsError); // a repeated hello just returns agent.info
     }
 
     [Theory]
@@ -52,7 +33,7 @@ public sealed class SessionHandlerTests
     [InlineData("invalid-hello")]
     public void Handshake_failures_are_answered_and_the_connection_closes(string scenario)
     {
-        var (_, connection, peer) = Open();
+        var peer = _test.Connect(hello: false);
         var (method, parameters, code) = scenario switch
         {
             "bad-token" => (Methods.Hello, Hello(token: new string('0', 64)), ErrorCodes.BadToken),
@@ -61,70 +42,61 @@ public sealed class SessionHandlerTests
             "not-hello" => (Methods.Ping, "{}", ErrorCodes.HandshakeRequired),
             _ => (Methods.Hello, "{\"token\":\"x\"}", ErrorCodes.InvalidParams),
         };
-        var response = peer.Call(method, parameters);
-        Assert.Equal(code, response.Error!.Code);
+        Assert.Equal(code, peer.Call(method, parameters).Error!.Code);
         Assert.Null(peer.Receive()); // closed
-        Assert.False(connection.Authenticated);
     }
 
     [Fact]
-    public void Session_methods_after_the_handshake()
+    public void Session_methods()
     {
-        var (handler, connection, peer) = Open();
-        peer.Call(Methods.Hello, Hello());
-
+        var peer = _test.Connect();
         var ping = PingResult.Read(peer.Call(Methods.Ping, "{\"echo\":\"hi\"}").Result, "result");
         Assert.Equal("hi", ping.Echo);
-        Assert.Null(ping.Frame);
+        Assert.Null(ping.Frame); // no frame has ticked yet
 
         var caps = AgentCapabilities.Read(peer.Call(Methods.AgentCapabilities).Result, "result");
         Assert.Equal(
-            new[] { "agent.capabilities", "agent.info", "cancel", "events.subscribe", "events.unsubscribe", "hello", "ping" },
+            new[]
+            {
+                "activity.get", "activity.list", "agent.capabilities", "agent.info", "agent.logLevel", "agent.setMode", "batch", "cancel",
+                "events.subscribe", "events.unsubscribe", "hello", "job.cancel", "job.get", "job.list", "job.wait", "ping",
+            },
             caps.Methods.Select(m => m.Name));
-        Assert.All(caps.Methods, m => Assert.Equal(AgentMode.ReadOnly, m.MinMode));
-
-        Assert.False(CancelResult.Read(peer.Call(Methods.Cancel, "{\"id\":\"t-9\"}").Result, "result").Cancelled);
+        Assert.Equal(120_000, caps.Methods.Single(m => m.Name == "job.wait").DefaultTimeoutMs);
+        Assert.Contains(EventKinds.JobFinished, caps.EventKinds);
+        Assert.Equal("16777216", ((UnityLudometry.Protocol.Json.JsonNumber)caps.Limits["Transport.MaxFrameBytes"]!).RawText);
 
         var sub = EventsSubscribeResult.Read(peer.Call(Methods.EventsSubscribe, "{\"kinds\":[\"log\",\"future.kind\",\"log\"]}").Result, "result");
         Assert.Equal(["log"], sub.Subscribed);
         Assert.Equal(["future.kind"], sub.Unknown);
-        Assert.True(connection.IsSubscribed("log"));
         Assert.Equal(["log"], EventsUnsubscribeResult.Read(peer.Call(Methods.EventsUnsubscribe, "{}").Result, "result").Unsubscribed);
-
-        Assert.False(peer.Call(Methods.Hello, Hello()).IsError); // a repeated hello just returns agent.info
-        Assert.NotEmpty(handler.ImplementedMethods());
-        connection.Dispose();
     }
 
     [Fact]
     public void Errors_after_the_handshake_keep_the_connection_open()
     {
-        var (handler, connection, peer) = Open();
-        peer.Call(Methods.Hello, Hello());
+        var peer = _test.Connect();
         Assert.Equal(ErrorCodes.MethodNotFound, peer.Call("no.suchMethod").Error!.Code);
         var notYet = peer.Call(Methods.ObjGet, "{}").Error!;
         Assert.Equal(ErrorCodes.MethodNotFound, notYet.Code);
         Assert.Contains("isn't implemented", notYet.Message);
-        var invalid = peer.Call(Methods.EventsSubscribe, "{\"kinds\":[]}").Error!;
-        Assert.Equal(ErrorCodes.InvalidParams, invalid.Code);
+        Assert.Equal(ErrorCodes.InvalidParams, peer.Call(Methods.EventsSubscribe, "{\"kinds\":[]}").Error!.Code);
         Assert.Equal(ErrorCodes.InvalidParams, peer.Call(Methods.Cancel, "{}").Error!.Code);
-
-        handler.Register(Methods.TimeInfo, _ => throw new ProtocolException(ErrorCodes.Unsupported, "no time here"));
-        Assert.Equal(ErrorCodes.Unsupported, peer.Call(Methods.TimeInfo).Error!.Code);
         Assert.False(peer.Call(Methods.Ping).IsError);
-        Assert.Throws<ArgumentException>(() => handler.Register("not.aMethod", _ => new PingResult()));
-        connection.Dispose();
     }
 
     [Fact]
     public void The_token_comparison_rejects_near_misses()
     {
-        Assert.True(_token.Matches(_token.Value));
-        Assert.False(_token.Matches(_token.Value[..63] + (_token.Value[63] == 'a' ? 'b' : 'a')));
-        Assert.False(_token.Matches(_token.Value + "0"));
-        Assert.False(_token.Matches(null));
+        var token = SessionToken.Generate();
+        Assert.True(token.Matches(token.Value));
+        Assert.False(token.Matches(token.Value[..63] + (token.Value[63] == 'a' ? 'b' : 'a')));
+        Assert.False(token.Matches(token.Value + "0"));
+        Assert.False(token.Matches(null));
         Assert.Matches("^[0-9a-f]{64}$", SessionToken.Generate().Value);
         Assert.NotEqual(SessionToken.Generate().Value, SessionToken.Generate().Value);
-        Assert.DoesNotContain(_token.Value, _token.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(token.Value, token.ToString(), StringComparison.Ordinal);
     }
+
+    public void Dispose() => _test.Dispose();
 }

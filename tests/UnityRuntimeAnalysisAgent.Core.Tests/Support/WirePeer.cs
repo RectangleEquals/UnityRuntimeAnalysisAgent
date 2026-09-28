@@ -41,13 +41,69 @@ public sealed class WirePeer(Stream stream) : IDisposable
         return task.Result is { } frame ? Envelope.Parse(frame) : null;
     }
 
-    public ResponseEnvelope Call(string method, string? paramsJson = null, string? contextJson = null)
+    /// <summary>Events received while waiting for responses (in arrival order).</summary>
+    public List<EventEnvelope> Events { get; } = new();
+
+    /// <summary>Sends a request and returns its response; events that arrive first are kept in <see cref="Events"/>.</summary>
+    public ResponseEnvelope Call(string method, string? paramsJson = null, string? contextJson = null, int timeoutMs = 5000)
     {
         var id = Send(method, paramsJson, contextJson);
-        var envelope = Receive();
-        var response = Assert.IsType<ResponseEnvelope>(envelope);
-        Assert.Equal(id, response.Id);
-        return response;
+        return AwaitResponse(id, timeoutMs);
+    }
+
+    private readonly Dictionary<string, ResponseEnvelope> _early = new(StringComparer.Ordinal);
+
+    /// <summary>The response to request <paramref name="id"/>. Responses may arrive in any order (they're matched by id):
+    /// others that arrive first are kept for their own callers, and events in <see cref="Events"/>.</summary>
+    public ResponseEnvelope AwaitResponse(string id, int timeoutMs = 5000)
+    {
+        if (_early.Remove(id, out var early))
+        {
+            return early;
+        }
+
+        while (true)
+        {
+            var envelope = Receive(timeoutMs) ?? throw new InvalidOperationException("The agent closed the connection.");
+            if (envelope is EventEnvelope ev)
+            {
+                Events.Add(ev);
+                continue;
+            }
+
+            var response = Assert.IsType<ResponseEnvelope>(envelope);
+            if (response.Id == id)
+            {
+                return response;
+            }
+
+            _early[response.Id] = response;
+        }
+    }
+
+    /// <summary>Waits for an event of a kind (checking those already received first).</summary>
+    public EventEnvelope AwaitEvent(string kind, int timeoutMs = 5000)
+    {
+        var found = Events.FirstOrDefault(e => e.Method == kind);
+        if (found is not null)
+        {
+            Events.Remove(found);
+            return found;
+        }
+
+        while (true)
+        {
+            var envelope = Receive(timeoutMs) ?? throw new InvalidOperationException("The agent closed the connection.");
+            if (envelope is EventEnvelope ev && ev.Method == kind)
+            {
+                return ev;
+            }
+
+            if (envelope is EventEnvelope other)
+            {
+                Events.Add(other);
+            }
+        }
     }
 
     public void Dispose() => stream.Dispose();
