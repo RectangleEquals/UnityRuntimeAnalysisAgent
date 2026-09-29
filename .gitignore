@@ -3,7 +3,6 @@ bin/
 obj/
 dist/
 artifacts/
-TestResults/
 *.binlog
 
 # Crash dumps, logs and merge leftovers
@@ -12,11 +11,6 @@ TestResults/
 *.log
 *.orig
 *.rej
-
-# Test and coverage output
-*.trx
-coverage*.xml
-*.coverage
 
 # OS files
 Thumbs.db
@@ -40,8 +34,4 @@ desktop.ini
 Directory.Build.local.props
 *.local.props
 *.local.json
-tests/**/local*.json
-
-# Snapshot tests: what a failing run produced (compare with the .verified file, then accept or fix)
-*.received.*
 

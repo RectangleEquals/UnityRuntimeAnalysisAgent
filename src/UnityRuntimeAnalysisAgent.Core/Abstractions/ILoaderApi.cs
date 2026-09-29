@@ -50,7 +50,7 @@ public sealed class LoaderPluginInfo
     public string? AssemblyPath { get; }
 }
 
-/// <summary>What Core needs from the mod loader. The loader shim implements it; tests use a fake.</summary>
+/// <summary>What Core needs from the mod loader. The loader shim implements it.</summary>
 public interface ILoaderApi
 {
     /// <summary>The loader's name (e.g. BepInEx).</summary>

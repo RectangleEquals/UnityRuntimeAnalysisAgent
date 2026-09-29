@@ -49,7 +49,7 @@ public sealed class AgentHost : IDisposable
     /// <param name="unity">Unity access. Without it there is no main-thread pump: main-thread methods fail with <c>MAIN_THREAD_UNAVAILABLE</c>.</param>
     /// <param name="loader">The loader, when running inside one.</param>
     /// <param name="pipeName">The pipe name (default <c>ulm-agent-&lt;pid&gt;</c>).</param>
-    /// <param name="createPipe">Test hook: a custom pipe transport factory (e.g. to force the TCP fallback).</param>
+    /// <param name="createPipe">A custom pipe transport factory (e.g. to force the TCP fallback).</param>
     public AgentHost(IConfigSource config, AgentEnvironment environment, IAgentLogger log, IUnityApi? unity = null, ILoaderApi? loader = null,
         string? pipeName = null, Func<string, IAgentLogger, ITransport>? createPipe = null)
     {
@@ -358,8 +358,8 @@ public sealed class AgentHost : IDisposable
 
     private void OnAccepted(Stream stream, Action release) => AcceptConnection(stream, _transport?.Kind ?? "?", release);
 
-    /// <summary>Serves a client over an already-connected stream (the transports use this; so can in-process clients and
-    /// tests). Returns the connection, or null if the host has stopped. <paramref name="release"/> runs when it closes.</summary>
+    /// <summary>Serves a client over an already-connected stream (the transports use this; so can in-process
+    /// clients). Returns the connection, or null if the host has stopped. <paramref name="release"/> runs when it closes.</summary>
     public Connection? AcceptConnection(Stream stream, string transportKind, Action? release = null)
     {
         release ??= () => { };
@@ -413,7 +413,7 @@ public sealed class AgentHost : IDisposable
 
     private static string FormatTimestamp(DateTime utc) => utc.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
 
-    /// <summary>Stands in for Unity when the host runs without it (tools, tests): the pump never starts.</summary>
+    /// <summary>Stands in for Unity when the host runs without it (tools): the pump never starts.</summary>
     private sealed class HeadlessUnity : IUnityApi
     {
         public static readonly HeadlessUnity Instance = new();

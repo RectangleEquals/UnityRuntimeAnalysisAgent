@@ -5,7 +5,7 @@ using UnityRuntimeAnalysisAgent.Client;
 namespace UnityRuntimeAnalysisAgent.AgentConsole;
 
 /// <summary>
-/// The console's logic, separate from <c>Main</c> so tests can drive it.
+/// The console's logic, separate from <c>Main</c> so other code can drive it.
 /// <code>
 /// AgentConsole (--discovery &lt;file&gt; | --pipe &lt;name&gt; --token &lt;hex&gt; | --tcp &lt;port&gt; --token &lt;hex&gt;) [--raw] [command]
 /// commands: info · send &lt;method&gt; [&lt;json&gt; | @file] · subscribe &lt;kind&gt;[,&lt;kind&gt;…] · expand &lt;ref&gt; · resolve &lt;locator&gt;

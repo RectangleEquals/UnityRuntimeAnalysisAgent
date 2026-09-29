@@ -3,14 +3,14 @@ using System.Collections.Generic;
 
 namespace UnityRuntimeAnalysisAgent.Core.Hosting;
 
-/// <summary>Reads agent configuration values (the loader's config file in the game; a dictionary in tests).</summary>
+/// <summary>Reads agent configuration values (the loader's config file in the game; a dictionary in tools).</summary>
 public interface IConfigSource
 {
     /// <summary>The raw value of a key such as <c>Transport.Mode</c>, or <c>null</c> when unset.</summary>
     string? Get(string key);
 }
 
-/// <summary>An in-memory configuration (tests, tools).</summary>
+/// <summary>An in-memory configuration (tools).</summary>
 public sealed class DictionaryConfigSource : IConfigSource
 {
     private readonly Dictionary<string, string> _values;

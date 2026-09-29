@@ -1,6 +1,6 @@
 # Contributing to UnityRuntimeAnalysisAgent
 
-Thanks for your interest! This guide explains how the repository is laid out, how to build and test it, and the
+Thanks for your interest! This guide explains how the repository is laid out, how to build it, and the
 rules that keep the plugin working across many Unity games. The project is pre-release, so expect things to move.
 
 ## Repository layout
@@ -12,29 +12,21 @@ rules that keep the plugin working across many Unity games. The project is pre-r
 | `src/UnityRuntimeAnalysisAgent.Overlay` | The in-game overlay (IMGUI). |
 | `src/UnityRuntimeAnalysisAgent.Api` | The small public API that scripts and mods under test compile against. |
 | `src/UnityRuntimeAnalysisAgent.BepInEx5` | The BepInEx 5 plugin entry point that wires everything together. |
-| `tests/*.Core.Tests`, `*.Api.Tests`, `*.Protocol.Tests` | Unit tests. Run anywhere, no game needed. |
-| `tests/UnityRuntimeAnalysisAgent.TestAssemblies` | Types the tests inspect: a type zoo, an IL corpus, stand-ins for Unity types (with the real full names), a fake scene. Its own assembly, so tests can read it from disk with dnlib. |
-| `tests/UnityRuntimeAnalysisAgent.TestAssemblies.Broken`, `.Missing` | An assembly whose dependency (`Missing`) is deliberately not deployed with the tests: some of its types can't load, like a mod with a missing dependency. |
 | `build/Packager` | Build-time tool that makes the release package (see below). |
 | `tools/AgentClient` | A small client library: connect, authenticate, send requests, receive events. |
 | `tools/AgentConsole` | A developer console for talking to a running agent (built on `AgentClient`). |
-| `external/protocol` | Git submodule with the shared protocol (schemas, fixtures, the `UnityLudometry.Protocol` package). See [its README](../external/README.md). |
+| `external/protocol` | Git submodule with the shared protocol (schemas and the `UnityLudometry.Protocol` package). See [its README](../external/README.md). |
 
-## Building and testing
+## Building
 
-Requirements: the .NET SDK pinned in `global.json` (10.0.x). Nothing else is needed for the build and unit tests.
+Requirements: the .NET SDK pinned in `global.json` (10.0.x). Nothing else is needed to build.
 
 ```
 git clone --recursive https://github.com/RectangleEquals/UnityRuntimeAnalysisAgent
 dotnet build -c Release
-dotnet test -c Release
 ```
 
-- Warnings are errors. A pull request must build with 0 warnings.
-- The tests here need no game: everything that touches Unity or the loader is behind interfaces that the tests fake.
-- Some tests compare against snapshots (`*.verified.json`, with [Verify](https://github.com/VerifyTests/Verify)). When
-  an output changes on purpose, the failing test writes a `*.received.json` next to the snapshot: check the difference,
-  then replace the `.verified` file with it.
+Warnings are errors. A pull request must build with 0 warnings.
 
 ### The package
 
@@ -44,9 +36,8 @@ A Release build also produces the release package in `dist/` (git-ignored), thro
 - `dist/package.json`: versions, target and the SHA-256 and size of every file;
 - `dist/UnityRuntimeAnalysisAgent-<version>-bepinex5.zip`: both of the above.
 
-The same source always produces byte-identical output in the same folder. CI builds map source paths, so its package is
-identical wherever it's built; to reproduce it locally, build with
-`dotnet build -c Release -p:ContinuousIntegrationBuild=true`. The build fails if any other assembly appears: BepInEx,
+The same source always produces byte-identical output in the same folder. To get a package that is identical
+wherever it's built (source paths mapped), build with `dotnet build -c Release -p:ContinuousIntegrationBuild=true`. The build fails if any other assembly appears: BepInEx,
 HarmonyX and UnityEngine come from the game and the loader, never from the package.
 
 To try a build in a game of your own with BepInEx 5 installed, set `GameDir` in a git-ignored
@@ -55,14 +46,11 @@ To try a build in a game of your own with BepInEx 5 installed, set `GameDir` in 
 
 ## The protocol submodule
 
-The wire protocol (JSON Schemas, golden fixtures and the `UnityLudometry.Protocol` package) comes from the
+The wire protocol (JSON Schemas and the `UnityLudometry.Protocol` package) comes from the
 UnityLudometryMCP repository through the `external/protocol` submodule, pinned to a protocol tag.
 
 - **The protocol is never changed here.** If agent work needs a protocol change, open an issue or a pull request in
   the UnityLudometryMCP repository; once a new protocol tag exists, bump the pin (see `external/README.md`).
-- `tests/UnityRuntimeAnalysisAgent.Protocol.Tests` replays every fixture of the pinned protocol, and sends the
-  fixture requests of each implemented feature to a live in-process agent: the responses must match the fixtures'
-  outcomes and validate against the schemas.
 - A build without the submodule stops with a message telling you to run `git submodule update --init --recursive`.
 
 ## Talking to a running agent
@@ -94,8 +82,7 @@ or `--tcp <port> --token <hex>` connect without a discovery file, and `--raw` pr
 ## How the core works
 
 `src/UnityRuntimeAnalysisAgent.Core` never touches Unity or the loader directly: it talks to them through
-`Abstractions/IUnityApi` and `Abstractions/ILoaderApi`, which the Unity and loader projects implement and tests fake
-(`tests/…Core.Tests/Support/Fakes.cs`: `FakeUnityApi.StepFrames(n)` advances frames and time by hand).
+`Abstractions/IUnityApi` and `Abstractions/ILoaderApi`, which the Unity and loader projects implement.
 
 - **Methods** are implemented as `[RpcMethod("name")]` methods on a service object registered with
   `AgentHost.Dispatcher.Register(service)`. The name must be a protocol method; its thread, required mode, job flag,
@@ -118,7 +105,7 @@ or `--tcp <port> --token <hex>` connect without a discovery file, and `--raw` pr
 ## Compatibility rules
 
 The plugin has to load in games built with many Unity versions (2018.1 onwards, Mono backend) next to whatever
-else the player has installed. These rules make that work. The tests enforce the ones marked ✔.
+else the player has installed. These rules make that work.
 
 - **Shipped assemblies target `netstandard2.0`.** Modern C# syntax is fine: PolySharp supplies the polyfills at
   compile time, without runtime dependencies.
@@ -126,16 +113,16 @@ else the player has installed. These rules make that work. The tests enforce the
   loader, so they are referenced compile-only (`PrivateAssets="all" ExcludeAssets="runtime"`). The only assembly the
   plugin ships besides its own is `UnityLudometry.Protocol.dll`, the shared protocol package, which has no
   dependencies. Check the `BepInEx5` project's output after changing references.
-- ✔ **Layering.** `Core` must not reference `UnityEngine*`, `BepInEx*` or any other loader (it may use
+- **Layering.** `Core` must not reference `UnityEngine*`, `BepInEx*` or any other loader (it may use
   `UnityLudometry.Protocol`). `Api` and `UnityLudometry.Protocol` reference only the framework. Unity code goes in `Unity` or `Overlay`, loader code in the loader project.
 - **Unity API baseline 2018.1.0.** `Unity` and `Overlay` compile against `UnityEngine.Modules` 2018.1.0, the oldest
   API surface that has everything the agent needs. Code compiled against it binds by name on newer players. Newer
   APIs must be reached through reflection and must degrade gracefully when missing.
-- ✔ **Never use `UnityEngine.Input` directly.** It moved from `CoreModule` to `InputLegacyModule` in Unity 2019.1, so
+- **Never use `UnityEngine.Input` directly.** It moved from `CoreModule` to `InputLegacyModule` in Unity 2019.1, so
   a direct reference compiled against 2018.1 fails with a `TypeLoadException` on newer players. Read input through
   the reflection-bound accessor.
 - **HarmonyX stays on 2.9.0**, the version of `0Harmony.dll` that ships with BepInEx 5.4.23.5. Compiling against a
-  newer HarmonyX can bind to members the loader's copy doesn't have. Only test projects may override it.
+  newer HarmonyX can bind to members the loader's copy doesn't have.
 - **Package versions are central.** Add or change versions only in `Directory.Packages.props`; project files carry
   no versions.
 
@@ -146,10 +133,10 @@ nullable reference types enabled everywhere. Public members of `Api` need XML do
 
 ## Pull requests
 
-- Keep each pull request focused, with tests for new behaviour. CI (Windows) must be green.
+- Keep each pull request focused, and check that it builds and works in a game before opening it.
 - Update the docs your change affects (this guide, the user docs, `CHANGELOG.md`).
 - Don't commit personal information or machine-specific paths: no user names, absolute paths or local settings
-  files. CI rejects known personal terms.
+  files.
 - Found a bug or have an idea? Open an issue first for anything bigger than a small fix.
 
 By contributing, you agree that your contributions are licensed under the [MIT License](../LICENSE).

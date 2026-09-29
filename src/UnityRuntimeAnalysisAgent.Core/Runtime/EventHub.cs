@@ -175,7 +175,7 @@ public sealed class EventHub : IDisposable
         }
     }
 
-    /// <summary>Sends every batch whose throttle interval has passed (called by the timer; public for tests).</summary>
+    /// <summary>Sends every batch whose throttle interval has passed (called by the timer).</summary>
     public void Flush(bool all = false)
     {
         var now = _nowMs();

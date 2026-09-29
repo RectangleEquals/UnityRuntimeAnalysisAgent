@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- All agent logic. No UnityEngine and no loader references (enforced by an architecture test). -->
+  <!-- All agent logic. No UnityEngine and no loader references. -->
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <RootNamespace>UnityRuntimeAnalysisAgent.Core</RootNamespace>
@@ -14,10 +14,6 @@
   <ItemGroup>
     <!-- The shared protocol (git submodule). UnityLudometry.Protocol.dll ships with the plugin; it has no dependencies. -->
     <ProjectReference Include="$(ProtocolProject)" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <InternalsVisibleTo Include="UnityRuntimeAnalysisAgent.Core.Tests" />
   </ItemGroup>
 
   <Target Name="CheckProtocolSubmodule" BeforeTargets="PrepareForBuild;CollectPackageReferences" Condition="!Exists('$(ProtocolProject)')">

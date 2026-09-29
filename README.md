@@ -20,12 +20,12 @@ It talks only to local tools on your own machine, over an authenticated named pi
 ## Building from source
 - .NET SDK 10 (see `global.json`).
 - `git clone --recursive https://github.com/RectangleEquals/UnityRuntimeAnalysisAgent`
-- `dotnet build -c Release`, then `dotnet test`.
+- `dotnet build -c Release`.
 
 A Release build also produces the plugin package in `dist/` ([details](docs/CONTRIBUTING.md#the-package)).
 
 ## Documentation
-- [Contributing](docs/CONTRIBUTING.md): repository layout, building and testing, and the compatibility rules the code follows.
+- [Contributing](docs/CONTRIBUTING.md): repository layout, building, and the compatibility rules the code follows.
 - [All documentation](docs/README.md). User guides are added as features land.
 
 ## About the use of AI in this project
@@ -34,8 +34,8 @@ This section is here so you can decide for yourself, with accurate information.
 **How this project is being made.** The design and implementation are produced with the help of an AI coding assistant (Anthropic's Claude), working under the direct supervision of a human developer. In practice:
 - The human decides what the project is for, sets every requirement and constraint, and chooses between the options the AI proposes.
 - The AI drafts code and documentation within those requirements, one small, reviewable step at a time.
-- **The human reviews every step** before it becomes part of the project. Every commit in this repository is made by the human, not by the AI.
-- Behaviour is checked by automated tests and by running the plugin in real Unity games, not just by trusting generated code.
+- **The human reviews every step** before it becomes part of the project. Commits are made by the human, or by the AI only with the human's explicit permission.
+- Behaviour is verified during development, including by running the plugin in real Unity games, not just by trusting generated code.
 
 **How this project uses AI when you run it.** It doesn't, by itself. This plugin contains no AI model and never contacts an AI service. It responds only to requests from a local tool you choose to connect (normally UnityLudometryMCP, which your own AI assistant may drive). And you stay in control:
 - It starts in **read-only mode**. Changing anything in your game requires a permission level you explicitly grant.

@@ -451,7 +451,7 @@ public sealed class CursorStore
     private readonly Func<DateTime> _now;
     private readonly Dictionary<string, (object State, DateTime Expires)> _cursors = new(StringComparer.Ordinal);
 
-    /// <summary>Creates the store (<paramref name="now"/> is the clock, for tests).</summary>
+    /// <summary>Creates the store (<paramref name="now"/> is the clock).</summary>
     public CursorStore(Func<DateTime>? now = null) => _now = now ?? (() => DateTime.UtcNow);
 
     /// <summary>A new cursor for <paramref name="state"/>.</summary>

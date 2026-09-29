@@ -4,7 +4,7 @@ using System.Reflection;
 
 namespace UnityRuntimeAnalysisAgent.Core.Hosting;
 
-/// <summary>Facts about the process the agent runs in, supplied by the loader shim (or a test host).</summary>
+/// <summary>Facts about the process the agent runs in, supplied by the loader shim (or a tool hosting the agent).</summary>
 public sealed class AgentEnvironment
 {
     /// <summary>Agent version (SemVer).</summary>

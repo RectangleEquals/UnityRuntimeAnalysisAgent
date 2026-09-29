@@ -8,7 +8,7 @@ namespace UnityRuntimeAnalysisAgent.Core.Transport;
 public static class TransportFactory
 {
     /// <summary>Creates and starts a transport. Throws if the requested (or every) transport fails.</summary>
-    /// <param name="createPipe">Pipe factory (tests inject failures); defaults to <see cref="PipeTransport"/>.</param>
+    /// <param name="createPipe">Pipe factory; defaults to <see cref="PipeTransport"/>.</param>
     public static ITransport Start(TransportMode mode, string pipeName, IAgentLogger log, Action<Stream, Action> onAccepted,
         Func<string, IAgentLogger, ITransport>? createPipe = null)
     {

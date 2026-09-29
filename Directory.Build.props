@@ -7,8 +7,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
-    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <!-- Shipped assemblies spell out their usings; test and tool projects enable implicit usings themselves. -->
+    <!-- Shipped assemblies spell out their usings; tool projects enable implicit usings themselves. -->
     <ImplicitUsings>disable</ImplicitUsings>
     <Authors>RectangleEquals</Authors>
     <Copyright>Copyright (c) 2026 RectangleEquals</Copyright>

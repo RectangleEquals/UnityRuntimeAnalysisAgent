@@ -8,7 +8,7 @@ What the agent has been verified with, and known limitations. This page grows as
 |---|---|
 | Loader | BepInEx 5.4.23.5 (Windows x64) |
 | Unity | 6000.3 (Unity 6), Mono scripting backend, Windows x64 player |
-| Games | A test player, and a released Unity 6 Mono game |
+| Games | A purpose-built Unity player, and a released Unity 6 Mono game |
 | API baseline | The agent is built against the Unity 2018.1 API, so it's meant to load in games from Unity 2018.1 on (Mono). Versions other than the ones above haven't been verified yet. |
 
 IL2CPP games aren't supported in this version.

@@ -71,7 +71,7 @@ public readonly struct SceneAddress
 
 /// <summary>
 /// What Core needs from Unity. Core never references UnityEngine: the Unity bindings implement this (and later slices of
-/// it), and tests use a fake. This slice covers the main-thread pump, object liveness and facts, and finding objects in
+/// it). This slice covers the main-thread pump, object liveness and facts, and finding objects in
 /// the scene hierarchy.
 /// </summary>
 public interface IUnityApi

@@ -1,7 +1,7 @@
 <Project>
   <!--
     Copy this file to the repository root as "Directory.Build.local.props" (git-ignored) and fill in your own paths.
-    Nothing here is required to build or run the unit tests.
+    Nothing here is required to build.
   -->
   <PropertyGroup>
     <!-- Developer-only: a game folder (with BepInEx 5) that the optional DeployToGame target copies the built plugin into. -->

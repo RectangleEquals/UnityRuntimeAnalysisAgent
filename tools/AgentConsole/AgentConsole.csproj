@@ -11,8 +11,4 @@
   <ItemGroup>
     <ProjectReference Include="..\AgentClient\AgentClient.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <InternalsVisibleTo Include="UnityRuntimeAnalysisAgent.Core.Tests" />
-  </ItemGroup>
 </Project>
