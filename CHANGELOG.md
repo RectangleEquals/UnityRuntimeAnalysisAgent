@@ -2,7 +2,7 @@
 
 ## 0.1.0-dev (unreleased)
 - Repository and toolchain scaffolding: solution, projects, central package management.
-- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.3`).
+- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.4`).
 - Transport, handshake and discovery: framed connections over a named pipe (restricted to the current user where the
   runtime allows) or a loopback TCP fallback, the token-authenticated `hello` handshake, `ping`, `agent.info`,
   `agent.capabilities`, `cancel` and event subscriptions, and an atomically written discovery file.
@@ -44,3 +44,10 @@
   `obj.invoke` (with generic arguments; out and ref arguments are returned), `obj.create`, `go.create`,
   `go.instantiate`, `go.setActive`, `obj.destroy`, `component.add`, `component.remove`, `coll.add`, `coll.remove`,
   `coll.set` and `event.raise`.
+- Content: loaded content with type-specific summaries (`content.list`, `content.summary` with estimated memory),
+  Addressables (`addressables.info`, `addressables.keys`, `addressables.locate`, and `addressables.load` /
+  `addressables.release` in `ReadOnly+Load`), AssetBundles (`bundles.loaded`, `bundles.load`), `Resources`
+  (`resources.load`, `resources.loadAll`), and two jobs: `content.export.start` (PNG of the textures, sprites and render
+  textures in use, read back through the GPU when they aren't readable; JSON of objects' data; text assets' raw bytes;
+  with a manifest) and `content.scan.start` (an NDJSON inventory of loaded assets, Addressables keys and bundles).
+- `code.attributes` no longer fails on a method whose parameter types come from a missing assembly.

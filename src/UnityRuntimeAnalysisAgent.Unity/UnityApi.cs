@@ -40,6 +40,9 @@ public sealed class UnityApi : IUnityApi
     /// <inheritdoc />
     public bool IsPumpHostAlive => _alive;
 
+    /// <inheritdoc />
+    public IContentApi? Content { get; } = new ContentApi();
+
     // Unity callbacks must never throw into the game.
     private void Guard(Action action)
     {

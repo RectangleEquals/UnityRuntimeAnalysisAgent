@@ -4,7 +4,7 @@ Git submodules live here.
 
 - `protocol/` — the shared agent protocol from the
   [UnityLudometryMCP](https://github.com/RectangleEquals/UnityLudometryMCP) repository: JSON Schemas and the zero-dependency C# package `UnityLudometry.Protocol` (message types generated from
-  the schemas). **Pinned to protocol `0.1.0-dev.3`.**
+  the schemas). **Pinned to protocol `0.1.0-dev.4`.**
 
 Clone with `git clone --recursive`, or run `git submodule update --init --recursive` in an existing clone.
 

@@ -345,7 +345,8 @@ internal sealed class CodeServices
 
                     if (targets.Contains("parameter") && member is MethodBase method)
                     {
-                        foreach (var parameter in SafeReflection.Parameters(method) ?? Array.Empty<System.Reflection.ParameterInfo>())
+                        // A parameter type from a missing assembly makes the parameters unreadable: the method is skipped.
+                        foreach (var parameter in Safe(() => SafeReflection.Parameters(method), null) ?? Array.Empty<System.Reflection.ParameterInfo>())
                         {
                             Collect(parameter, "parameter", () => new Anchor
                             {

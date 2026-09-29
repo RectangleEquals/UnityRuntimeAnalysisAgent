@@ -91,6 +91,14 @@ public sealed class AgentHost : IDisposable
         {
             unity.SceneChanged += OnSceneChanged;
         }
+
+        Dispatcher.Register(new ContentServices(Data, Code, Pump, Jobs, environment.AgentVersion));
+        if (unity?.Content is { } content)
+        {
+            var addressables = content.AddressablesStatus;
+            Capabilities.SetModule("addressables", addressables.Available, addressables.Version, addressables.Reason);
+        }
+
         foreach (var warning in _config.Warnings)
         {
             Log.Warning(warning);
@@ -502,6 +510,8 @@ public sealed class AgentHost : IDisposable
         public object AddComponent(object gameObjectOrComponent, Type componentType) => throw new NotSupportedException("No Unity in this process.");
 
         public object CreateScriptableObject(Type type) => throw new NotSupportedException("No Unity in this process.");
+
+        public IContentApi? Content => null;
 
         public event Action<SceneChange>? SceneChanged
         {

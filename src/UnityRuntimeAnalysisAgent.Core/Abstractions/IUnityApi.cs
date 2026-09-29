@@ -157,6 +157,9 @@ public interface IUnityApi
     /// <summary><c>ScriptableObject.CreateInstance(type)</c>.</summary>
     object CreateScriptableObject(Type type);
 
+    /// <summary>Content (summaries, bundles, Resources, Addressables, export readback), or null without Unity.</summary>
+    IContentApi? Content { get; }
+
     /// <summary>Raised on the main thread when a scene loads, unloads or becomes active.</summary>
     event Action<SceneChange>? SceneChanged;
 }

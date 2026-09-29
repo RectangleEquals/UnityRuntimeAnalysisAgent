@@ -31,6 +31,14 @@ IL2CPP games aren't supported in this version.
 - **Only Unity objects are found by type.** `obj.find` and `obj.query` with a type search the objects Unity tracks
   (GameObjects, components, assets); the agent doesn't scan the managed heap, so plain C# objects are reached from a
   target, a static or a collection instead.
+- **Content export covers what only the running game holds.** `content.export.start` writes textures, sprites and
+  render textures as PNG (the pixels in use), objects' data as JSON and text assets' raw bytes. Audio, meshes and fonts
+  don't change at runtime, so they're skipped with the warning `STATIC_ASSET`: extract them from the game's files with a
+  static tool. Textures that aren't readable are read back through the GPU, so a player started without graphics
+  (`-nographics`) can only export readable ones (the others get `IMAGE_NOT_READABLE`).
+- **Addressables labels can stand for thousands of locations.** In `content.scan.start` each key's record keeps its
+  first 200 locations (and each location its first 64 dependencies); the footer's `redactions` counts what was left out.
+  `addressables.locate` on such a key returns every location, which can exceed the maximum message size.
 - **Games can pause their main thread while loading.** After `Pump.StallMs` (3 s by default) without a frame, the agent
   logs a warning, and requests that need the main thread fail at once with `MAIN_THREAD_UNAVAILABLE` instead of hanging;
   they work again as soon as the game renders frames. Raise the setting if a game's loads regularly take longer.
