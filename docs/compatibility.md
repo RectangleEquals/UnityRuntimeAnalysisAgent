@@ -26,6 +26,11 @@ IL2CPP games aren't supported in this version.
 - **Engine internal calls are listed without their parameters.** Reading the parameters of some engine functions can
   crash the game's runtime, so for internal calls (functions implemented inside the engine) the agent never asks: their
   names and signatures end in `(?)`. Everything else about them (their exact code reference, their IL callers) is there.
+- **Engine internal calls aren't invoked.** For the same reason, `obj.invoke` refuses them (`UNSUPPORTED`); call the
+  game's own code that uses them instead.
+- **Only Unity objects are found by type.** `obj.find` and `obj.query` with a type search the objects Unity tracks
+  (GameObjects, components, assets); the agent doesn't scan the managed heap, so plain C# objects are reached from a
+  target, a static or a collection instead.
 - **Games can pause their main thread while loading.** After `Pump.StallMs` (3 s by default) without a frame, the agent
   logs a warning, and requests that need the main thread fail at once with `MAIN_THREAD_UNAVAILABLE` instead of hanging;
   they work again as soon as the game renders frames. Raise the setting if a game's loads regularly take longer.

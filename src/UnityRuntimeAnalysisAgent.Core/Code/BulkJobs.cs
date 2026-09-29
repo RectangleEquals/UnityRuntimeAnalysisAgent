@@ -571,7 +571,8 @@ public sealed class SurveyJob
         return null;
     }
 
-    private static string? SingletonReason(Type declaring, MemberInfo member, Type memberType)
+    /// <summary>Why a static member looks like a singleton (self-typed, a generic singleton base, "Instance" naming), or null.</summary>
+    public static string? SingletonReason(Type declaring, MemberInfo member, Type memberType)
     {
         if (memberType == declaring)
         {

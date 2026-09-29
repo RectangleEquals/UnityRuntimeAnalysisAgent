@@ -19,7 +19,8 @@ public sealed class DataModel : IDisposable
         Unity = unity;
         Modules = new ModuleMap();
         Anchors = new AnchorResolver(Modules);
-        Handles = new HandleTable(unity, maxHandles);
+        StaticInit = new Live.StaticInitRegistry();
+        Handles = new HandleTable(unity, maxHandles, StaticInit.Observe);
         Variables = new VariableStore(Handles);
         Expansions = new ExpansionRegistry(maxRefs);
         Cursors = new CursorStore(now);
@@ -38,6 +39,9 @@ public sealed class DataModel : IDisposable
 
     /// <summary>Live object handles.</summary>
     public HandleTable Handles { get; }
+
+    /// <summary>Which types' static constructors are known to have run.</summary>
+    public Live.StaticInitRegistry StaticInit { get; }
 
     /// <summary>Named references.</summary>
     public VariableStore Variables { get; }
@@ -199,6 +203,19 @@ public sealed class TargetResolver
         }
 
         return current;
+    }
+
+    /// <summary>Walks a member path and returns every stop: the start, then one per step (for writes that must put a
+    /// changed struct back into its container).</summary>
+    public List<Resolved> WalkChain(Resolved start, IReadOnlyList<MemberPathStep> path, string param)
+    {
+        var chain = new List<Resolved> { start };
+        for (var i = 0; i < path.Count; i++)
+        {
+            chain.Add(Step(chain[i], path[i], $"{param}[{i}]"));
+        }
+
+        return chain;
     }
 
     /// <summary>The locator base for a live object: scene objects and loaded assets have one, other objects don't.</summary>

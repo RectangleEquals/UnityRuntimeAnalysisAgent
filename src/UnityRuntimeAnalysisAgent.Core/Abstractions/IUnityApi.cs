@@ -119,4 +119,44 @@ public interface IUnityApi
     /// <summary>Every object of <paramref name="baseType"/> (loaded assets included, <c>Resources.FindObjectsOfTypeAll</c>),
     /// counted by exact runtime type (main thread only). One scan, whatever the number of types asked about later.</summary>
     System.Collections.Generic.IReadOnlyDictionary<Type, int> CountObjectsByType(Type baseType);
+
+    // ---- Live state (main thread only unless noted) -------------------------------------------------------------------
+
+    /// <summary>The loaded scenes, then the DontDestroyOnLoad pseudo-scene.</summary>
+    System.Collections.Generic.IReadOnlyList<SceneFacts> Scenes();
+
+    /// <summary>Scenes in the build settings.</summary>
+    int SceneCountInBuildSettings { get; }
+
+    /// <summary>The root GameObjects of a scene (by handle).</summary>
+    System.Collections.Generic.IReadOnlyList<object> SceneRoots(int sceneHandle);
+
+    /// <summary>A GameObject's state (for a component: its GameObject's), or null for anything else.</summary>
+    GameObjectFacts? DescribeGameObject(object gameObjectOrComponent);
+
+    /// <summary><c>Resources.FindObjectsOfTypeAll</c>: every object of <paramref name="type"/>, scene objects (active or not),
+    /// assets and hidden objects included.</summary>
+    System.Collections.Generic.IReadOnlyList<object> FindObjectsOfTypeAll(Type type);
+
+    /// <summary>A new GameObject under <paramref name="parent"/> (a GameObject or component), or at the root of
+    /// <paramref name="scene"/> (by name; null → the active scene).</summary>
+    object CreateGameObject(string name, object? parent, string? scene);
+
+    /// <summary><c>Object.Instantiate</c>; the clone goes under <paramref name="parent"/> when given, at the given pose.</summary>
+    object Instantiate(object original, object? parent, object? position, object? rotation);
+
+    /// <summary><c>GameObject.SetActive</c>.</summary>
+    void SetActive(object gameObject, bool active);
+
+    /// <summary><c>Object.Destroy</c> (end of frame) or <c>Object.DestroyImmediate</c>.</summary>
+    void Destroy(object unityObject, bool immediate);
+
+    /// <summary><c>GameObject.AddComponent(type)</c>.</summary>
+    object AddComponent(object gameObjectOrComponent, Type componentType);
+
+    /// <summary><c>ScriptableObject.CreateInstance(type)</c>.</summary>
+    object CreateScriptableObject(Type type);
+
+    /// <summary>Raised on the main thread when a scene loads, unloads or becomes active.</summary>
+    event Action<SceneChange>? SceneChanged;
 }

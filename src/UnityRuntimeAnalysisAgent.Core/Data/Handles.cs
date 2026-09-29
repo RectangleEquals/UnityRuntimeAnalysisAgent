@@ -26,11 +26,14 @@ public sealed class HandleTable
     private long _next = 1;
 
     /// <summary>Creates a table holding at most <paramref name="max"/> unpinned handles.</summary>
-    public HandleTable(IUnityApi unity, int max)
+    public HandleTable(IUnityApi unity, int max, Action<Type>? minted = null)
     {
         _unity = unity;
         Max = max;
+        _minted = minted;
     }
+
+    private readonly Action<Type>? _minted;
 
     /// <summary>The cap on handles (pinned ones don't count against eviction).</summary>
     public int Max { get; }
@@ -77,6 +80,7 @@ public sealed class HandleTable
             }
 
             var h = _next++;
+            _minted?.Invoke(value.GetType()); // an instance exists: its type has been initialized
             var created = new Entry(h, value, unity) { Node = _recency.AddLast(h) };
             _entries.Add(h, created);
             _byObject.Add(value, h);

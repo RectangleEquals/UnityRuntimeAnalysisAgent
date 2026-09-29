@@ -33,3 +33,14 @@
   event, and two bulk jobs writing NDJSON files: `survey.start` (types, members, Unity messages, serialized fields, custom
   serializer markers, singleton-like statics, instance counts) and `il.index.start` (the cross-reference index), both
   reused when nothing changed. Nothing here runs a static constructor.
+- Live state: scenes (`scene.list`, `scene.roots`, the `scene.changed` event), the GameObject hierarchy (`go.tree`,
+  `go.find`, `go.get`, `go.path`; same-named siblings are numbered, `Name[2]`), objects (`obj.find` by type and scope,
+  `obj.inspect`, `obj.get`, `obj.snapshot` across targets, `obj.describe`), statics and singletons (`static.get`,
+  `static.singletons`), declarative queries spread over frames (`obj.query`, or as a job with `obj.query.start`),
+  collections (`coll.page`, `coll.count`) and listeners (`event.listeners`, `unityEvent.listeners`). Reads can carry
+  expected values and report each match. Statics are read only once the game has initialized their type, unless
+  `allowInit` is set (Full mode).
+- Changes, in Full mode only, each audited with the locator of what it changed: `obj.set` (structs are written back),
+  `obj.invoke` (with generic arguments; out and ref arguments are returned), `obj.create`, `go.create`,
+  `go.instantiate`, `go.setActive`, `obj.destroy`, `component.add`, `component.remove`, `coll.add`, `coll.remove`,
+  `coll.set` and `event.raise`.

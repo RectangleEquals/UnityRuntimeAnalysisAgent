@@ -85,6 +85,12 @@ public sealed class AgentHost : IDisposable
         Dispatcher.Register(new DiagnosticsService(this));
         Dispatcher.Register(new DataServices(Data, Pump));
         Dispatcher.Register(new CodeServices(Data, Code, Jobs, environment));
+        Dispatcher.Register(new LiveServices(Data, Code, Pump, Jobs, Modes));
+        Events.EmittedKinds.Add(EventKinds.SceneChanged);
+        if (unity is not null)
+        {
+            unity.SceneChanged += OnSceneChanged;
+        }
         foreach (var warning in _config.Warnings)
         {
             Log.Warning(warning);
@@ -257,6 +263,33 @@ public sealed class AgentHost : IDisposable
                 Log.Warning($"code.assemblyLoaded for {assembly.GetName().Name} failed: {e.Message}");
             }
         });
+    }
+
+    // Unity raises scene callbacks on the main thread; the event is sent from there (sending only queues).
+    private void OnSceneChanged(SceneChange change)
+    {
+        if (_stopped || !Events.HasSubscribers(EventKinds.SceneChanged))
+        {
+            return;
+        }
+
+        try
+        {
+            var clock = Pump.Clock;
+            Events.Publish(EventKinds.SceneChanged, new SceneChangedEventParams
+            {
+                Change = change.Change,
+                Scene = LiveServices.SceneInfo(change.Scene),
+                PreviousActive = change.PreviousActive,
+                Mode = change.Mode,
+                Frame = clock.FrameCount,
+                RealtimeMs = (long)(clock.Realtime * 1000),
+            });
+        }
+        catch (Exception e)
+        {
+            Log.Warning($"scene.changed for {change.Scene.Name} failed: {e.Message}");
+        }
     }
 
     internal AgentInfo BuildAgentInfo()
@@ -447,5 +480,33 @@ public sealed class AgentHost : IDisposable
         public SceneAddress? Locate(object unityObject) => null;
 
         public IReadOnlyDictionary<Type, int> CountObjectsByType(Type baseType) => new Dictionary<Type, int>();
+
+        public IReadOnlyList<SceneFacts> Scenes() => Array.Empty<SceneFacts>();
+
+        public int SceneCountInBuildSettings => 0;
+
+        public IReadOnlyList<object> SceneRoots(int sceneHandle) => Array.Empty<object>();
+
+        public GameObjectFacts? DescribeGameObject(object gameObjectOrComponent) => null;
+
+        public IReadOnlyList<object> FindObjectsOfTypeAll(Type type) => Array.Empty<object>();
+
+        public object CreateGameObject(string name, object? parent, string? scene) => throw new NotSupportedException("No Unity in this process.");
+
+        public object Instantiate(object original, object? parent, object? position, object? rotation) => throw new NotSupportedException("No Unity in this process.");
+
+        public void SetActive(object gameObject, bool active) => throw new NotSupportedException("No Unity in this process.");
+
+        public void Destroy(object unityObject, bool immediate) => throw new NotSupportedException("No Unity in this process.");
+
+        public object AddComponent(object gameObjectOrComponent, Type componentType) => throw new NotSupportedException("No Unity in this process.");
+
+        public object CreateScriptableObject(Type type) => throw new NotSupportedException("No Unity in this process.");
+
+        public event Action<SceneChange>? SceneChanged
+        {
+            add { }
+            remove { }
+        }
     }
 }

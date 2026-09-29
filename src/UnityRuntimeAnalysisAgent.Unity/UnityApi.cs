@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using System.Threading;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -31,10 +32,26 @@ public sealed class UnityApi : IUnityApi
         _log = log;
         _mainThreadId = Thread.CurrentThread.ManagedThreadId;
         SceneManager.sceneLoaded += (_, _) => OnLoaderUpdate();
+        SceneManager.sceneLoaded += (scene, mode) => Guard(() => OnSceneLoaded(scene, mode));
+        SceneManager.sceneUnloaded += scene => Guard(() => OnSceneUnloaded(scene));
+        SceneManager.activeSceneChanged += (previous, next) => Guard(() => OnActiveSceneChanged(previous, next));
     }
 
     /// <inheritdoc />
     public bool IsPumpHostAlive => _alive;
+
+    // Unity callbacks must never throw into the game.
+    private void Guard(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception e)
+        {
+            _log.Error("A scene callback failed.", e);
+        }
+    }
 
     /// <summary>How many times the host was created (the first time included).</summary>
     public int HostsCreated { get; private set; }
@@ -134,22 +151,21 @@ public sealed class UnityApi : IUnityApi
     /// <inheritdoc />
     public object? FindGameObject(string path, string? scene)
     {
-        var names = path.Split('/');
-        foreach (var root in Roots(scene))
+        var steps = path.Split('/');
+        var level = Roots(scene).ToList();
+        GameObject? found = null;
+        foreach (var step in steps)
         {
-            if (root.name != names[0])
+            found = Pick(level, step);
+            if (found == null)
             {
-                continue;
+                return null;
             }
 
-            var found = names.Length == 1 ? root.transform : root.transform.Find(string.Join("/", names, 1, names.Length - 1));
-            if (found != null)
-            {
-                return found.gameObject;
-            }
+            level = Children(found);
         }
 
-        return null;
+        return found;
     }
 
     /// <inheritdoc />
@@ -162,26 +178,20 @@ public sealed class UnityApi : IUnityApi
     /// <inheritdoc />
     public object? FindChild(object gameObjectOrComponent, string path)
     {
-        var child = GameObjectOf(gameObjectOrComponent)?.transform.Find(path);
-        return child == null ? null : child.gameObject;
+        var go = GameObjectOf(gameObjectOrComponent);
+        foreach (var step in path.Split('/'))
+        {
+            go = go == null ? null : Pick(Children(go), step);
+        }
+
+        return go == null ? null : go;
     }
 
     /// <inheritdoc />
     public SceneAddress? Locate(object unityObject)
     {
         var go = GameObjectOf(unityObject);
-        if (go == null || !go.scene.IsValid())
-        {
-            return null;
-        }
-
-        var names = new System.Collections.Generic.List<string>();
-        for (var t = go.transform; t != null; t = t.parent)
-        {
-            names.Insert(0, t.name);
-        }
-
-        return new SceneAddress(go.scene.buildIndex == -1 && go.scene.name == DontDestroyOnLoadScene ? "ddol" : go.scene.name, string.Join("/", names.ToArray()));
+        return go == null || !go.scene.IsValid() ? null : new SceneAddress(SceneName(go.scene), PathOf(go));
     }
 
     private const string DontDestroyOnLoadScene = "DontDestroyOnLoad";
@@ -196,7 +206,72 @@ public sealed class UnityApi : IUnityApi
         _ => null,
     };
 
-    // Scene roots to search: one scene by name (or DontDestroyOnLoad, reached through the agent's own host), or all of them.
+    private static System.Collections.Generic.List<GameObject> Children(GameObject go)
+    {
+        var children = new System.Collections.Generic.List<GameObject>(go.transform.childCount);
+        foreach (Transform child in go.transform)
+        {
+            children.Add(child.gameObject);
+        }
+
+        return children;
+    }
+
+    // "Name" is the first object with that name among its siblings, "Name[2]" the second, and so on.
+    private static GameObject? Pick(System.Collections.Generic.List<GameObject> level, string step)
+    {
+        var name = step;
+        var nth = 1;
+        var open = step.LastIndexOf('[');
+        if (open > 0 && step.EndsWith("]", StringComparison.Ordinal) && int.TryParse(step.Substring(open + 1, step.Length - open - 2), out var n) && n >= 1)
+        {
+            name = step.Substring(0, open);
+            nth = n;
+        }
+
+        foreach (var candidate in level)
+        {
+            if (candidate.name == name && --nth == 0)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static string PathOf(GameObject go)
+    {
+        var steps = new System.Collections.Generic.List<string>();
+        for (var t = go.transform; t != null; t = t.parent)
+        {
+            var siblings = t.parent != null ? Children(t.parent.gameObject) : new System.Collections.Generic.List<GameObject>(t.gameObject.scene.GetRootGameObjects());
+            var nth = 0;
+            foreach (var sibling in siblings)
+            {
+                if (sibling.name == t.name)
+                {
+                    nth++;
+                }
+
+                if (sibling == t.gameObject)
+                {
+                    break;
+                }
+            }
+
+            steps.Insert(0, nth > 1 ? $"{t.name}[{nth}]" : t.name);
+        }
+
+        return string.Join("/", steps.ToArray());
+    }
+
+    // Scene.handle is public in some Unity versions only; GetHashCode returns the same handle in all of them.
+    private static int Handle(Scene scene) => scene.GetHashCode();
+
+    private static string SceneName(Scene scene) => scene.buildIndex == -1 && scene.name == DontDestroyOnLoadScene ? "ddol" : scene.name;
+
+    // Scene roots to search: one scene by name (or DontDestroyOnLoad), or all of them.
     private System.Collections.Generic.IEnumerable<GameObject> Roots(string? scene)
     {
         if (scene is null || scene != "ddol")
@@ -214,13 +289,29 @@ public sealed class UnityApi : IUnityApi
             }
         }
 
-        if ((scene is null || scene == "ddol") && _host != null)
+        if ((scene is null || scene == "ddol") && DdolScene() is { } ddol)
         {
-            foreach (var root in _host.scene.GetRootGameObjects())
+            foreach (var root in ddol.GetRootGameObjects())
             {
                 yield return root;
             }
         }
+    }
+
+    // The DontDestroyOnLoad pseudo-scene: the agent's own host lives there; without it, a hidden object is parked there
+    // for a moment to read its scene.
+    private Scene? DdolScene()
+    {
+        if (_host != null)
+        {
+            return _host.scene;
+        }
+
+        var probe = new GameObject("UnityRuntimeAnalysisAgent.DdolProbe") { hideFlags = HideFlags.HideAndDontSave };
+        UnityEngine.Object.DontDestroyOnLoad(probe);
+        var scene = probe.scene;
+        UnityEngine.Object.DestroyImmediate(probe);
+        return scene;
     }
 
     /// <inheritdoc />
@@ -235,6 +326,197 @@ public sealed class UnityApi : IUnityApi
 
         return counts;
     }
+
+    /// <inheritdoc />
+    public System.Collections.Generic.IReadOnlyList<SceneFacts> Scenes()
+    {
+        var active = Handle(SceneManager.GetActiveScene());
+        var scenes = new System.Collections.Generic.List<SceneFacts>();
+        for (var i = 0; i < SceneManager.sceneCount; i++)
+        {
+            scenes.Add(Facts(SceneManager.GetSceneAt(i), active));
+        }
+
+        if (DdolScene() is { } ddol)
+        {
+            scenes.Add(Facts(ddol, active));
+        }
+
+        return scenes;
+    }
+
+    /// <inheritdoc />
+    public int SceneCountInBuildSettings => SceneManager.sceneCountInBuildSettings;
+
+    /// <inheritdoc />
+    public System.Collections.Generic.IReadOnlyList<object> SceneRoots(int sceneHandle)
+    {
+        for (var i = 0; i < SceneManager.sceneCount; i++)
+        {
+            var scene = SceneManager.GetSceneAt(i);
+            if (Handle(scene) == sceneHandle)
+            {
+                return scene.isLoaded ? scene.GetRootGameObjects() : Array.Empty<object>();
+            }
+        }
+
+        return DdolScene() is { } ddol && Handle(ddol) == sceneHandle ? ddol.GetRootGameObjects() : Array.Empty<object>();
+    }
+
+    /// <inheritdoc />
+    public GameObjectFacts? DescribeGameObject(object gameObjectOrComponent)
+    {
+        var go = GameObjectOf(gameObjectOrComponent);
+        if (go == null)
+        {
+            return null;
+        }
+
+        var components = new System.Collections.Generic.List<(object, bool?)>();
+        foreach (var component in go.GetComponents<Component>())
+        {
+            if (component == null)
+            {
+                continue; // a missing script
+            }
+
+            bool? enabled = component switch
+            {
+                Behaviour behaviour => behaviour.enabled,
+                Renderer renderer => renderer.enabled,
+                Collider collider => collider.enabled,
+                _ => null,
+            };
+            components.Add((component, enabled));
+        }
+
+        var transform = go.transform;
+        return new GameObjectFacts
+        {
+            GameObject = go,
+            Name = go.name,
+            ActiveSelf = go.activeSelf,
+            ActiveInHierarchy = go.activeInHierarchy,
+            Tag = go.tag,
+            Layer = go.layer,
+            HideFlags = go.hideFlags.ToString(),
+            Scene = go.scene.IsValid() ? SceneName(go.scene) : string.Empty,
+            Path = go.scene.IsValid() ? PathOf(go) : go.name,
+            Parent = transform.parent == null ? null : transform.parent.gameObject,
+            SiblingIndex = transform.GetSiblingIndex(),
+            Children = Children(go).ToArray(),
+            Components = components,
+            LocalPosition = transform.localPosition,
+            LocalRotation = transform.localRotation,
+            LocalScale = transform.localScale,
+            Position = transform.position,
+            Rotation = transform.rotation,
+            LossyScale = transform.lossyScale,
+        };
+    }
+
+    /// <inheritdoc />
+    public System.Collections.Generic.IReadOnlyList<object> FindObjectsOfTypeAll(Type type) => Resources.FindObjectsOfTypeAll(type);
+
+    /// <inheritdoc />
+    public object CreateGameObject(string name, object? parent, string? scene)
+    {
+        var go = new GameObject(name);
+        if (parent != null && GameObjectOf(parent) is { } parentObject)
+        {
+            go.transform.SetParent(parentObject.transform, false);
+        }
+        else if (scene == "ddol")
+        {
+            UnityEngine.Object.DontDestroyOnLoad(go);
+        }
+        else if (scene != null)
+        {
+            var target = SceneManager.GetSceneByName(scene);
+            if (!target.IsValid() || !target.isLoaded)
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+                throw new ArgumentException($"No loaded scene '{scene}'.");
+            }
+
+            SceneManager.MoveGameObjectToScene(go, target);
+        }
+
+        return go;
+    }
+
+    /// <inheritdoc />
+    public object Instantiate(object original, object? parent, object? position, object? rotation)
+    {
+        var clone = UnityEngine.Object.Instantiate((UnityEngine.Object)original);
+        if (GameObjectOf(clone) is { } go)
+        {
+            if (parent != null && GameObjectOf(parent) is { } parentObject)
+            {
+                go.transform.SetParent(parentObject.transform, false);
+            }
+
+            if (position is Vector3 p)
+            {
+                go.transform.position = p;
+            }
+
+            if (rotation is Quaternion r)
+            {
+                go.transform.rotation = r;
+            }
+        }
+
+        return clone;
+    }
+
+    /// <inheritdoc />
+    public void SetActive(object gameObject, bool active) =>
+        (GameObjectOf(gameObject) ?? throw new ArgumentException("Not a GameObject.")).SetActive(active);
+
+    /// <inheritdoc />
+    public void Destroy(object unityObject, bool immediate)
+    {
+        if (immediate)
+        {
+            UnityEngine.Object.DestroyImmediate((UnityEngine.Object)unityObject);
+        }
+        else
+        {
+            UnityEngine.Object.Destroy((UnityEngine.Object)unityObject);
+        }
+    }
+
+    /// <inheritdoc />
+    public object AddComponent(object gameObjectOrComponent, Type componentType) =>
+        (GameObjectOf(gameObjectOrComponent) ?? throw new ArgumentException("Not a GameObject or component.")).AddComponent(componentType);
+
+    /// <inheritdoc />
+    public object CreateScriptableObject(Type type) => ScriptableObject.CreateInstance(type);
+
+    /// <inheritdoc />
+    public event Action<SceneChange>? SceneChanged;
+
+    private SceneFacts Facts(Scene scene, int activeHandle) => new()
+    {
+        Handle = Handle(scene),
+        Name = scene.name,
+        Path = scene.path,
+        BuildIndex = scene.buildIndex,
+        IsLoaded = scene.isLoaded,
+        IsActive = Handle(scene) == activeHandle,
+        RootCount = scene.isLoaded ? scene.rootCount : 0,
+        IsDontDestroyOnLoad = scene.buildIndex == -1 && scene.name == DontDestroyOnLoadScene,
+    };
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode) =>
+        SceneChanged?.Invoke(new SceneChange { Change = "loaded", Scene = Facts(scene, Handle(SceneManager.GetActiveScene())), Mode = mode == LoadSceneMode.Additive ? "additive" : "single" });
+
+    private void OnSceneUnloaded(Scene scene) =>
+        SceneChanged?.Invoke(new SceneChange { Change = "unloaded", Scene = Facts(scene, Handle(SceneManager.GetActiveScene())) });
+
+    private void OnActiveSceneChanged(Scene previous, Scene next) =>
+        SceneChanged?.Invoke(new SceneChange { Change = "activeChanged", Scene = Facts(next, Handle(next)), PreviousActive = previous.name });
 
     /// <summary>Destroys the pump host now, like a game destroying stray objects would (for the watchdog self-test).</summary>
     public void DestroyHostForTest() => DestroyHost();
