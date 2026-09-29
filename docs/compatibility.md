@@ -55,6 +55,11 @@ IL2CPP games aren't supported in this version.
 - **Pausing uses the time scale.** `time.pause` and `time.step` set `Time.timeScale`, so gameplay driven by unscaled
   time or a game's own clock keeps going.
 - **`app.quit`'s exit code needs Unity 2018.2 or newer**; on older versions the game quits with Unity's own code.
+- **Screenshots need a rendering game.** A game started without graphics (`-nographics`) has nothing to capture;
+  `screenshot.*` answers `UNSUPPORTED` there.
+- **Logged errors may come without a stack.** Whether Unity attaches a stack to `Debug.LogError` lines is the game's
+  own stack-trace logging setting, and released games often turn it off; the agent doesn't change it. Exceptions
+  always carry their stack.
 - **Games can pause their main thread while loading.** After `Pump.StallMs` (3 s by default) without a frame, the agent
   logs a warning, and requests that need the main thread fail at once with `MAIN_THREAD_UNAVAILABLE` instead of hanging;
   they work again as soon as the game renders frames. Raise the setting if a game's loads regularly take longer.

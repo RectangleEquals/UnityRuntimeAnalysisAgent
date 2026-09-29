@@ -78,3 +78,12 @@
   `ui.setValue`, `ui.submit`, `ui.cancel`, `ui.select`, all through the game's own handlers), and the application
   (`app.info`, `app.runInBackground`, `app.quit`). `hook.verify` can use a UI click as its trigger. The agent's own UI
   is never listed or driven. Capabilities report `module:ugui` and `module:tmp`.
+- Diagnostics: a unified log of Unity's messages, other plugins' and mods' (through the loader) and the agent's own, with
+  a global sequence and capped messages and stacks (`logs.tail` with level/source/channel/regex filters, `logs.search`,
+  `logs.mark`, and the `log` event with per-subscription filters; setting `Logs.BufferSize`); exception monitoring now
+  reads it. Screenshots for vision (`screenshot.capture`: the finished frame or one camera, super-sampling, downscaling
+  to a maximum size, cropping to a rectangle or to a UI element's / renderer's / collider's screen bounds, numbered
+  `ui-marks` that map to clickable handles, bursts, PNG or JPEG, inline base64, written atomically with SHA-256;
+  `screenshot.camera`). Metrics (`metrics.get`: frame times, fps, managed and Unity memory, collections, object counts,
+  working set, private bytes, threads; `metrics.sample.start`: a time series to an NDJSON file). `agent.healthCheck`
+  now also resolves an anchor, hooks and unhooks an agent-owned method, and checks the log.

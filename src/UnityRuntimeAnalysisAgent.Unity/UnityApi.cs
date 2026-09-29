@@ -67,6 +67,16 @@ public sealed class UnityApi : IUnityApi
     /// <inheritdoc />
     public IUiApi? Ui { get; } = new UiApi();
 
+    /// <inheritdoc />
+    public ICaptureApi? Capture { get; } = new CaptureApi();
+
+    /// <inheritdoc />
+    public ProfilerMemory ReadProfilerMemory() => new(
+        UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong(),
+        UnityEngine.Profiling.Profiler.GetMonoHeapSizeLong(),
+        UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong(),
+        UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong());
+
     // Unity callbacks must never throw into the game.
     private void Guard(Action action)
     {

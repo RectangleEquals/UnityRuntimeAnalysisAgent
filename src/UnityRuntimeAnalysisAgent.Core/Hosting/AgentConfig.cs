@@ -54,6 +54,9 @@ public sealed class AgentConfig
     /// <summary>Config key of <see cref="MaxInstrumentedMethods"/>.</summary>
     public const string MaxInstrumentedMethodsKey = "Instrumentation.MaxMethods";
 
+    /// <summary>Config key of <see cref="LogBufferSize"/>.</summary>
+    public const string LogBufferSizeKey = "Logs.BufferSize";
+
     /// <summary>Config key of <see cref="RemoveInstrumentationOnDisconnect"/>.</summary>
     public const string RemoveOnDisconnectKey = "Instrumentation.RemoveOnDisconnect";
 
@@ -89,6 +92,9 @@ public sealed class AgentConfig
 
     /// <summary>Methods instrumented at once (default 2,000).</summary>
     public int MaxInstrumentedMethods { get; set; } = 2000;
+
+    /// <summary>Log entries kept in memory (default 10,000).</summary>
+    public int LogBufferSize { get; set; } = 10_000;
 
     /// <summary>Remove a client's non-persistent instrumentation when it disconnects (default true).</summary>
     public bool RemoveInstrumentationOnDisconnect { get; set; } = true;
@@ -170,6 +176,7 @@ public sealed class AgentConfig
         config.MaxEventQueueBytes = config.ReadInt(source, MaxEventQueueBytesKey, config.MaxEventQueueBytes, 64 * 1024, 256 * 1024 * 1024);
         config.MaxHandles = config.ReadInt(source, MaxHandlesKey, config.MaxHandles, 100, 1_000_000);
         config.MaxInstrumentedMethods = config.ReadInt(source, MaxInstrumentedMethodsKey, config.MaxInstrumentedMethods, 1, 20_000);
+        config.LogBufferSize = config.ReadInt(source, LogBufferSizeKey, config.LogBufferSize, 100, 1_000_000);
         config.RemoveInstrumentationOnDisconnect = config.ReadBool(source, RemoveOnDisconnectKey, config.RemoveInstrumentationOnDisconnect);
         return config;
     }
@@ -184,6 +191,7 @@ public sealed class AgentConfig
         new KeyValuePair<string, long>(MaxEventQueueBytesKey, MaxEventQueueBytes),
         new KeyValuePair<string, long>(MaxHandlesKey, MaxHandles),
         new KeyValuePair<string, long>(MaxInstrumentedMethodsKey, MaxInstrumentedMethods),
+        new KeyValuePair<string, long>(LogBufferSizeKey, LogBufferSize),
     };
 
     private bool ReadBool(IConfigSource source, string key, bool fallback)

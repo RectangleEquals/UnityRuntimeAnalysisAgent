@@ -38,7 +38,7 @@ internal sealed class InstrumentationServices : IDisposable
     private double _rateAt;
     private long _rateRecords;
 
-    public InstrumentationServices(DataModel data, CodeModel code, MainThreadPump pump, JobManager jobs, EventHub events, IUnityApi unity, ModeController modes,
+    public InstrumentationServices(DataModel data, CodeModel code, MainThreadPump pump, JobManager jobs, EventHub events, Diagnostics.LogBuffer logs, ModeController modes,
         int maxMethods, bool removeOnDisconnect, string agentVersion, Action<string, string, JsonObject> warning)
     {
         _modes = modes;
@@ -54,7 +54,7 @@ internal sealed class InstrumentationServices : IDisposable
         Profiles = new ProfileManager(Instrumenter, records, pump, agentVersion);
         Watches = new WatchManager(data, events, pump);
         Subscriptions = new SubscriptionManager(data, events, pump);
-        Exceptions = new ExceptionMonitor(unity, events, pump);
+        Exceptions = new ExceptionMonitor(logs, events, pump);
         Records = records;
         RegisterTrigger(new InvokeTrigger(data));
     }

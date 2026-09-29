@@ -355,6 +355,11 @@ public sealed class Instrumenter : IDisposable
         }
 
         var assembly = method.Module.Assembly.GetName().Name ?? string.Empty;
+        if (method.DeclaringType == typeof(Diagnostics.HealthProbe))
+        {
+            return null; // the one agent method meant to be hooked: agent.healthCheck's round trip
+        }
+
         if (OwnAssemblies.Contains(assembly, StringComparer.Ordinal) || assembly.StartsWith("MonoMod", StringComparison.Ordinal))
         {
             return $"It belongs to {assembly}, which the agent never instruments.";

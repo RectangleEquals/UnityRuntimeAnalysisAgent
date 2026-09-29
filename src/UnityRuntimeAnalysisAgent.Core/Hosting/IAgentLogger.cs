@@ -71,6 +71,27 @@ public sealed class LevelFilteringLogger : IAgentLogger
     }
 }
 
+/// <summary>Writes to another logger and to the unified log buffer (as the agent's own source).</summary>
+public sealed class BufferingLogger : IAgentLogger
+{
+    private readonly IAgentLogger _inner;
+    private readonly Diagnostics.LogBuffer _buffer;
+
+    /// <summary>Wraps a logger.</summary>
+    public BufferingLogger(IAgentLogger inner, Diagnostics.LogBuffer buffer)
+    {
+        _inner = inner;
+        _buffer = buffer;
+    }
+
+    /// <inheritdoc />
+    public void Log(AgentLogLevel level, string message, Exception? exception = null)
+    {
+        _inner.Log(level, message, exception);
+        _buffer.AddAgent(level, message, exception);
+    }
+}
+
 /// <summary>A logger that discards everything.</summary>
 public sealed class NullAgentLogger : IAgentLogger
 {

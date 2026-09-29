@@ -12,6 +12,7 @@ using UnityRuntimeAnalysisAgent.Core.Abstractions;
 using UnityRuntimeAnalysisAgent.Core.Discovery;
 using UnityRuntimeAnalysisAgent.Core.Code;
 using UnityRuntimeAnalysisAgent.Core.Data;
+using UnityRuntimeAnalysisAgent.Core.Diagnostics;
 using UnityRuntimeAnalysisAgent.Core.Dispatch;
 using UnityRuntimeAnalysisAgent.Core.Execution;
 using UnityRuntimeAnalysisAgent.Core.Instrumentation;
@@ -59,7 +60,8 @@ public sealed class AgentHost : IDisposable
         _environment = environment;
         _unity = unity;
         Loader = loader;
-        Log = new LevelFilteringLogger(log, _config.LogLevel);
+        Logs = new LogBuffer(_config.LogBufferSize, LogClock);
+        Log = new LevelFilteringLogger(new BufferingLogger(log, Logs), _config.LogLevel);
         _createPipe = createPipe;
         PipeName = pipeName ?? $"ulm-agent-{environment.ProcessId}";
         Token = SessionToken.Generate();
@@ -95,7 +97,32 @@ public sealed class AgentHost : IDisposable
         }
 
         Dispatcher.Register(new ContentServices(Data, Code, Pump, Jobs, environment.AgentVersion));
-        Instrumentation = new InstrumentationServices(Data, Code, Pump, Jobs, Events, unity ?? HeadlessUnity.Instance, Modes, _config.MaxInstrumentedMethods,
+        Dispatcher.Register(new LogServices(Logs, Events));
+        Events.EmittedKinds.Add(EventKinds.Log);
+        if (unity is not null)
+        {
+            unity.LogMessage += Logs.AddUnity;
+        }
+
+        if (loader is not null)
+        {
+            loader.LoaderLog += OnLoaderLog;
+        }
+
+        RegisterCleanup("detach the log feeds", () =>
+        {
+            if (unity is not null)
+            {
+                unity.LogMessage -= Logs.AddUnity;
+            }
+
+            if (loader is not null)
+            {
+                loader.LoaderLog -= OnLoaderLog;
+            }
+        });
+
+        Instrumentation = new InstrumentationServices(Data, Code, Pump, Jobs, Events, Logs, Modes, _config.MaxInstrumentedMethods,
             _config.RemoveInstrumentationOnDisconnect, environment.AgentVersion, Warn);
         Dispatcher.Register(Instrumentation);
         RegisterCleanup("remove instrumentation", Instrumentation.Dispose);
@@ -104,6 +131,9 @@ public sealed class AgentHost : IDisposable
         Instrumentation.RegisterTrigger(Execution.Trigger);
         RegisterCleanup("revert live patches", Execution.Dispose);
         Events.EmittedKinds.Add(EventKinds.ExecEmit);
+        Dispatcher.Register(new MetricsServices(Pump, unity ?? HeadlessUnity.Instance, Jobs, environment.AgentVersion));
+        Screenshots = new ScreenshotServices(Data, Pump, unity ?? HeadlessUnity.Instance);
+        Dispatcher.Register(Screenshots);
         var control = new ControlServices(Data, Pump, unity ?? HeadlessUnity.Instance);
         Dispatcher.Register(control);
         Instrumentation.RegisterTrigger(control.Trigger);
@@ -232,8 +262,38 @@ public sealed class AgentHost : IDisposable
     /// <summary>Instrumentation: hooks, traces, profiles, verification, watches, event subscriptions, exceptions.</summary>
     internal InstrumentationServices Instrumentation { get; }
 
+    /// <summary>Screenshots (the overlay sets their hooks).</summary>
+    internal ScreenshotServices Screenshots { get; }
+
+    /// <summary>The unified log (Unity, the loader, the agent).</summary>
+    public LogBuffer Logs { get; }
+
     /// <summary>Snippets, live patches and mod hot-reload.</summary>
     internal ExecutionServices Execution { get; }
+
+    // The frame (null before the first) and the game's real time, for log entries written on any thread.
+    private (long? Frame, long RealtimeMs) LogClock()
+    {
+        var pump = Pump;
+        if (pump is null || !pump.HasTicked)
+        {
+            return (null, 0);
+        }
+
+        var clock = pump.Clock;
+        return (clock.FrameCount, (long)(clock.Realtime * 1000));
+    }
+
+    // The loader relays Unity's own log ("Unity Log") and the agent's lines too: those already have their own feed.
+    private void OnLoaderLog(LoaderLogEntry entry)
+    {
+        if (entry.Source == "Unity Log" || entry.Source.StartsWith("UnityRuntimeAnalysisAgent", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Logs.AddLoader(entry);
+    }
 
     // An agent.warning to subscribers, and the log.
     private void Warn(string code, string message, JsonObject data)
@@ -555,6 +615,10 @@ public sealed class AgentHost : IDisposable
         public IGameControl? Control => null;
 
         public IUiApi? Ui => null;
+
+        public ICaptureApi? Capture => null;
+
+        public ProfilerMemory ReadProfilerMemory() => default;
 
         public event Action<string, string, string>? LogMessage
         {

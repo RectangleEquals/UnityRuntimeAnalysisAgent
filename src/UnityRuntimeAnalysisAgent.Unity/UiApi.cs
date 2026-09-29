@@ -329,7 +329,7 @@ internal sealed class UiApi : IUiApi
         return canvas.rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? (Vector2)centre : RectTransformUtility.WorldToScreenPoint(canvas.rootCanvas.worldCamera, centre);
     }
 
-    private static (double X, double Y, double W, double H) ScreenRect(RectTransform rect, Canvas canvas)
+    internal static (double X, double Y, double W, double H) ScreenRect(RectTransform rect, Canvas canvas)
     {
         var corners = new Vector3[4];
         rect.GetWorldCorners(corners);

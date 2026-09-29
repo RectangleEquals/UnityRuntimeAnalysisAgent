@@ -415,7 +415,7 @@ public sealed class ExceptionMonitor : IDisposable
     [ThreadStatic]
     private static bool t_inHandler;
 
-    private readonly IUnityApi _unity;
+    private readonly Diagnostics.LogBuffer _logs;
     private readonly EventHub _events;
     private readonly MainThreadPump _pump;
     private readonly object _gate = new();
@@ -426,10 +426,10 @@ public sealed class ExceptionMonitor : IDisposable
     private long _windowStart;
     private int _inWindow;
 
-    /// <summary>Creates the monitor (off until enabled).</summary>
-    public ExceptionMonitor(IUnityApi unity, EventHub events, MainThreadPump pump)
+    /// <summary>Creates the monitor (off until enabled); logged exceptions come from the unified log.</summary>
+    public ExceptionMonitor(Diagnostics.LogBuffer logs, EventHub events, MainThreadPump pump)
     {
-        _unity = unity;
+        _logs = logs;
         _events = events;
         _pump = pump;
     }
@@ -467,11 +467,11 @@ public sealed class ExceptionMonitor : IDisposable
     {
         if (on && !_enabled)
         {
-            _unity.LogMessage += OnLog;
+            _logs.Added += OnLog;
         }
         else if (!on && _enabled)
         {
-            _unity.LogMessage -= OnLog;
+            _logs.Added -= OnLog;
         }
 
         _enabled = on;
@@ -491,15 +491,15 @@ public sealed class ExceptionMonitor : IDisposable
         _firstChance = on;
     }
 
-    private void OnLog(string message, string stackTrace, string type)
+    private void OnLog(LogEntry entry)
     {
-        if (type != "Exception")
+        if (entry.Source != "unity" || entry.Level != "exception")
         {
             return;
         }
 
-        var match = LoggedException.Match(message);
-        Report(match.Success ? match.Groups["type"].Value : "Exception", match.Success ? match.Groups["message"].Value : message, stackTrace, null, "log");
+        var match = LoggedException.Match(entry.Message);
+        Report(match.Success ? match.Groups["type"].Value : "Exception", match.Success ? match.Groups["message"].Value : entry.Message, entry.Stack ?? string.Empty, null, "log");
     }
 
     private void OnFirstChance(object? sender, FirstChanceExceptionEventArgs e)

@@ -69,6 +69,31 @@ public readonly struct SceneAddress
     public string Path { get; }
 }
 
+/// <summary>Unity's profiler memory counters (bytes; null = not reported).</summary>
+public readonly struct ProfilerMemory
+{
+    /// <summary>Creates the counters.</summary>
+    public ProfilerMemory(long? monoUsed, long? monoHeap, long? totalAllocated, long? totalReserved)
+    {
+        MonoUsed = monoUsed;
+        MonoHeap = monoHeap;
+        TotalAllocated = totalAllocated;
+        TotalReserved = totalReserved;
+    }
+
+    /// <summary>Managed memory in use.</summary>
+    public long? MonoUsed { get; }
+
+    /// <summary>The managed heap's size.</summary>
+    public long? MonoHeap { get; }
+
+    /// <summary>Memory Unity has allocated.</summary>
+    public long? TotalAllocated { get; }
+
+    /// <summary>Memory Unity has reserved.</summary>
+    public long? TotalReserved { get; }
+}
+
 /// <summary>
 /// What Core needs from Unity. Core never references UnityEngine: the Unity bindings implement this (and later slices of
 /// it). This slice covers the main-thread pump, object liveness and facts, and finding objects in
@@ -165,6 +190,13 @@ public interface IUnityApi
 
     /// <summary>uGUI and TextMeshPro, or null without Unity.</summary>
     IUiApi? Ui { get; }
+
+    /// <summary>Screen and camera captures, or null without Unity.</summary>
+    ICaptureApi? Capture { get; }
+
+    /// <summary>Unity's profiler memory counters in bytes (<c>Profiler.GetMonoUsedSizeLong</c> and friends), each null where
+    /// the runtime doesn't report it (main thread only).</summary>
+    ProfilerMemory ReadProfilerMemory();
 
     /// <summary>Raised on the main thread when a scene loads, unloads or becomes active.</summary>
     event Action<SceneChange>? SceneChanged;
