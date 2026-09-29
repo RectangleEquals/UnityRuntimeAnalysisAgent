@@ -3,7 +3,7 @@
     "h": 1,
     "type": {
       "mvid": "{mvid}",
-      "token": 33554447,
+      "token": {token},
       "name": "Zoo.Player"
     },
     "unity": {
@@ -17,7 +17,7 @@
     "h": 1,
     "type": {
       "mvid": "{mvid}",
-      "token": 33554447,
+      "token": {token},
       "name": "Zoo.Player"
     },
     "fields": {
@@ -33,7 +33,7 @@
         "h": 2,
         "type": {
           "mvid": "{mvid}",
-          "token": 33554435,
+          "token": {token},
           "name": "Zoo.Plain"
         },
         "fields": {

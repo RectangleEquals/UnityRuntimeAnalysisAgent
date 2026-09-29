@@ -223,6 +223,19 @@ public sealed class UnityApi : IUnityApi
         }
     }
 
+    /// <inheritdoc />
+    public System.Collections.Generic.IReadOnlyDictionary<Type, int> CountObjectsByType(Type baseType)
+    {
+        var counts = new System.Collections.Generic.Dictionary<Type, int>();
+        foreach (var found in Resources.FindObjectsOfTypeAll(baseType))
+        {
+            var type = found.GetType();
+            counts[type] = counts.TryGetValue(type, out var n) ? n + 1 : 1;
+        }
+
+        return counts;
+    }
+
     /// <summary>Destroys the pump host now, like a game destroying stray objects would (for the watchdog self-test).</summary>
     public void DestroyHostForTest() => DestroyHost();
 

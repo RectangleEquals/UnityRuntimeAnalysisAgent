@@ -97,15 +97,25 @@ public sealed class DispatcherTests : IDisposable
     public void Timeouts_and_cancellation()
     {
         var peer = _test.Connect();
-        var hang = peer.Call(Methods.LogsTail, "{\"how\":\"hang\"}").Error!; // DefaultTimeoutMs = 300
+        var hang = peer.Call(Methods.LogsTail, "{\"how\":\"hang\"}", timeoutMs: 30_000).Error!; // DefaultTimeoutMs = 300 (the client waits longer)
         Assert.Equal(ErrorCodes.Timeout, hang.Code);
 
         // A long timeout, so the cancel always arrives first (however busy the machine is).
+        // The cancel is retried until the request is in flight (under load it may not be registered yet: no fixed pause).
         var id = peer.Send(Methods.LogsTail, "{\"how\":\"hang\"}", timeoutMs: 30_000);
-        Thread.Sleep(50);
-        var cancel = CancelResult.Read(peer.Call(Methods.Cancel, $"{{\"id\":\"{id}\"}}").Result, "result");
-        Assert.True(cancel.Cancelled);
-        Assert.Equal(ErrorCodes.Cancelled, peer.AwaitResponse(id).Error!.Code);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var cancelled = false;
+        while (!cancelled && DateTime.UtcNow < deadline)
+        {
+            cancelled = CancelResult.Read(peer.Call(Methods.Cancel, $"{{\"id\":\"{id}\"}}", timeoutMs: 30_000).Result, "result").Cancelled;
+            if (!cancelled)
+            {
+                Thread.Sleep(20);
+            }
+        }
+
+        Assert.True(cancelled);
+        Assert.Equal(ErrorCodes.Cancelled, peer.AwaitResponse(id, 30_000).Error!.Code);
         Assert.False(CancelResult.Read(peer.Call(Methods.Cancel, "{\"id\":\"nothing-in-flight\"}").Result, "result").Cancelled);
     }
 

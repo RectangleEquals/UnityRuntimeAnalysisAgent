@@ -25,6 +25,16 @@ namespace UnityEngine
     {
     }
 
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class SerializeField : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class SerializeReference : Attribute
+    {
+    }
+
     public sealed class GameObject : Object
     {
         public readonly List<GameObject> children = new();
@@ -178,6 +188,17 @@ namespace UnityRuntimeAnalysisAgent.TestAssemblies
             }
 
             return null;
+        }
+
+        /// <summary>Loaded assets (counted like Unity's <c>Resources.FindObjectsOfTypeAll</c> counts them).</summary>
+        public List<Object> Assets { get; } = new();
+
+        /// <summary>Scene objects, their components and the assets that are of <paramref name="baseType"/>, by exact type.</summary>
+        public IReadOnlyDictionary<Type, int> CountByType(Type baseType)
+        {
+            IEnumerable<Object> All(GameObject go) => new Object[] { go }.Concat(go.components).Concat(go.children.SelectMany(All));
+            return Roots.SelectMany(All).Concat(Assets).Where(o => !o.destroyed && baseType.IsInstanceOfType(o))
+                .GroupBy(o => o.GetType()).ToDictionary(g => g.Key, g => g.Count());
         }
 
         public static GameObject GameObjectOf(object value) => value switch

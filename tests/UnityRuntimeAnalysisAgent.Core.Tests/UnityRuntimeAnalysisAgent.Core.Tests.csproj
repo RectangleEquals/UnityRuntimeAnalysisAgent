@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
     <ProjectReference Include="..\UnityRuntimeAnalysisAgent.TestAssemblies\UnityRuntimeAnalysisAgent.TestAssemblies.csproj" />
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.TestAssemblies.Broken\UnityRuntimeAnalysisAgent.TestAssemblies.Broken.csproj" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Api\UnityRuntimeAnalysisAgent.Api.csproj" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Unity\UnityRuntimeAnalysisAgent.Unity.csproj" />
     <ProjectReference Include="..\..\src\UnityRuntimeAnalysisAgent.Overlay\UnityRuntimeAnalysisAgent.Overlay.csproj" />

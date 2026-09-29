@@ -107,6 +107,9 @@ public sealed class EventHub : IDisposable
         return removed;
     }
 
+    /// <summary>Whether any authenticated connection is subscribed to <paramref name="kind"/> (skip costly payloads otherwise).</summary>
+    public bool HasSubscribers(string kind) => _connections().Any(c => c.Authenticated && c.IsSubscribed(kind));
+
     /// <summary>Sends an event (a non-batched kind) to every subscribed connection.</summary>
     public void Publish(string kind, ProtocolMessage payload, JsonObject? context = null)
     {

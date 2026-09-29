@@ -3,7 +3,7 @@
   "h": 1,
   "type": {
     "mvid": "{mvid}",
-    "token": 33554435,
+    "token": {token},
     "name": "Zoo.Plain"
   },
   "fields": {
@@ -28,37 +28,37 @@
   "anchors": {
     "number": {
       "mvid": "{mvid}",
-      "token": 67108867,
+      "token": {token},
       "name": "Zoo.Plain::number"
     },
     "text": {
       "mvid": "{mvid}",
-      "token": 67108868,
+      "token": {token},
       "name": "Zoo.Plain::text"
     },
     "next": {
       "mvid": "{mvid}",
-      "token": 67108869,
+      "token": {token},
       "name": "Zoo.Plain::next"
     },
     "Auto": {
       "mvid": "{mvid}",
-      "token": 67108871,
+      "token": {token},
       "name": "Zoo.Plain::<Auto>k__BackingField"
     },
     "Computed": {
       "mvid": "{mvid}",
-      "token": 385875971,
+      "token": {token},
       "name": "Zoo.Plain::Computed"
     },
     "Throws": {
       "mvid": "{mvid}",
-      "token": 385875972,
+      "token": {token},
       "name": "Zoo.Plain::Throws"
     },
     "Text": {
       "mvid": "{mvid}",
-      "token": 385875973,
+      "token": {token},
       "name": "Zoo.Plain::Text"
     }
   }

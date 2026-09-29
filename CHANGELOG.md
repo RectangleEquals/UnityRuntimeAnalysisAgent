@@ -28,3 +28,9 @@
   (`value.expand` reads it; nothing is dropped silently), durable locators (`locator.resolve`), and paging cursors.
   `AgentConsole` gained `expand` and `resolve`.
 - Methods that wait (`job.wait`, `batch`) no longer hold a thread while waiting.
+- Code introspection: loaded assemblies (with the SHA-256 of their files), types, members, hierarchies, implementations,
+  attributes (decoded without running them), IL (`code.il`, JSON or text) and per-method IL hashes, cross-references
+  (`code.callers`, `code.callees`, `code.fieldAccess`, `code.strings`, `code.allocations`), the `code.assemblyLoaded`
+  event, and two bulk jobs writing NDJSON files: `survey.start` (types, members, Unity messages, serialized fields, custom
+  serializer markers, singleton-like statics, instance counts) and `il.index.start` (the cross-reference index), both
+  reused when nothing changed. Nothing here runs a static constructor.

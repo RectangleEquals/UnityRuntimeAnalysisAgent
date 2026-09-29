@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- An assembly whose dependency isn't deployed (see the Missing project): some of its types can't load. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Remove="xunit.v3" />
+    <PackageReference Remove="xunit.runner.visualstudio" />
+    <PackageReference Remove="Microsoft.NET.Test.Sdk" />
+    <Using Remove="Xunit" />
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.TestAssemblies.Missing\UnityRuntimeAnalysisAgent.TestAssemblies.Missing.csproj" Private="false" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

@@ -337,7 +337,7 @@ public sealed class TargetResolver
             throw DataErrors.InvalidParams(param + ".member", $"{AnchorWriter.MemberName(member)} isn't a field or property.");
         }
 
-        if (member is PropertyInfo property && (!property.CanRead || property.GetIndexParameters().Length > 0))
+        if (member is PropertyInfo property && !SafeReflection.IsPlainReadable(property))
         {
             throw DataErrors.InvalidParams(param + ".member", $"{AnchorWriter.MemberName(member)} can't be read as a value (no getter, or indexed).");
         }
@@ -375,7 +375,7 @@ public sealed class TargetResolver
         {
             foreach (var member in t.GetMembers(flags | BindingFlags.DeclaredOnly))
             {
-                var readable = member is FieldInfo || member is PropertyInfo p && p.CanRead && p.GetIndexParameters().Length == 0;
+                var readable = member is FieldInfo || member is PropertyInfo p && SafeReflection.IsPlainReadable(p);
                 if (readable && (member.Name == name || DisplayName(member) == name))
                 {
                     found.Add(member);

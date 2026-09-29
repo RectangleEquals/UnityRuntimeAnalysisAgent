@@ -76,7 +76,7 @@ public sealed class ValueWriter
 
         if (value is not null && AnchorWriter.CanAnchor(value.GetType()))
         {
-            info.Add("type", AnchorWriter.ForType(value.GetType()).ToJson());
+            info.Add("type", AnchorWriter.ToJson(AnchorWriter.ForType(value.GetType())));
         }
 
         if (member is not null)
@@ -163,9 +163,9 @@ public sealed class ValueWriter
             case TimeSpan ts:
                 return Tagged("timespan", ts.ToString("c", CultureInfo.InvariantCulture));
             case Type t:
-                return AnchorWriter.CanAnchor(t) ? AnchorWriter.ForType(t).ToJson() : AnchorWriter.TypeRef(t);
+                return AnchorWriter.CanAnchor(t) ? AnchorWriter.ToJson(AnchorWriter.ForType(t)) : AnchorWriter.TypeRef(t);
             case MemberInfo mi:
-                return Guarded(() => AnchorWriter.ForMember(mi).ToJson());
+                return Guarded(() => AnchorWriter.ToJson(AnchorWriter.ForMember(mi)));
             case Delegate del:
                 return DelegateValue(del);
         }
@@ -382,7 +382,7 @@ public sealed class ValueWriter
             result.Add("h", JsonValue.From(Mint(value)));
         }
 
-        result.Add("type", AnchorWriter.CanAnchor(type) ? AnchorWriter.ForType(type).ToJson() : AnchorWriter.ForType(typeof(object)).ToJson());
+        result.Add("type", AnchorWriter.CanAnchor(type) ? AnchorWriter.ToJson(AnchorWriter.ForType(type)) : AnchorWriter.ToJson(AnchorWriter.ForType(typeof(object))));
         result.Add("fields", fields);
         if (props.Count > 0)
         {
@@ -422,7 +422,7 @@ public sealed class ValueWriter
             foreach (var t in chain)
             {
                 members.AddRange(t.GetProperties(Instance)
-                    .Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && (_view.NonPublic || p.GetGetMethod() is not null) && !shown.Contains(p.Name))
+                    .Where(p => SafeReflection.IsPlainReadable(p) && (_view.NonPublic || p.GetGetMethod() is not null) && !shown.Contains(p.Name))
                     .OrderBy(p => p.MetadataToken));
             }
         }
@@ -503,7 +503,7 @@ public sealed class ValueWriter
             entries.Add(new JsonObject
             {
                 { "target", single.Target is null ? JsonNull.Instance : Descriptor(single.Target) },
-                { "method", Guarded(() => AnchorWriter.ForMember(single.Method).ToJson()) },
+                { "method", Guarded(() => AnchorWriter.ToJson(AnchorWriter.ForMember(single.Method))) },
             });
         }
 
@@ -517,7 +517,7 @@ public sealed class ValueWriter
             : new JsonNumber(Convert.ToInt64(value, CultureInfo.InvariantCulture));
         return new JsonObject
         {
-            { "enum", AnchorWriter.ForType(value.GetType()).ToJson() },
+            { "enum", AnchorWriter.ToJson(AnchorWriter.ForType(value.GetType())) },
             { "value", underlying },
             { "name", JsonValue.From(value.ToString()) },
         };

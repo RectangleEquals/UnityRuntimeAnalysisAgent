@@ -138,7 +138,17 @@ public sealed class AnchorTests : IDisposable
             var at = IndexOf(bytes, original.ToByteArray());
             rebuilt.ToByteArray().CopyTo(bytes, at);
             Assert.Equal(-1, IndexOf(bytes, original.ToByteArray(), at + 1));
+
+            // ...and renamed (same length), so name-based queries elsewhere in this test process don't see a second zoo.
+            var name = System.Text.Encoding.ASCII.GetBytes("UnityRuntimeAnalysisAgent.TestAssemblies");
+            var renamed = System.Text.Encoding.ASCII.GetBytes("UnityRuntimeAnalysisAgent.TestAssembliez");
+            for (var i = IndexOf(bytes, name); i >= 0; i = IndexOf(bytes, name, i + 1))
+            {
+                renamed.CopyTo(bytes, i);
+            }
+
             var loaded = rebuiltContext.LoadFromStream(new MemoryStream(bytes));
+            Assert.Equal("UnityRuntimeAnalysisAgent.TestAssembliez", loaded.GetName().Name);
             Assert.Equal(rebuilt, loaded.ManifestModule.ModuleVersionId);
             Assert.True(_modules.TryGet(rebuilt, out var module));
             Assert.Same(loaded, module.Assembly);

@@ -211,13 +211,22 @@ internal sealed class DataServices
 
             const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
             candidates.AddRange(type.GetMembers(all)
-                .Where(m => m.Name == p.Member && (p.Signature is null || m.ToString() == p.Signature || (m is MethodBase mb && AnchorWriter.Signature(mb) == p.Signature)))
+                .Where(m => m.Name == p.Member && (p.Signature is null || SignatureMatches(m, p.Signature)))
                 .OrderBy(m => m.MetadataToken)
                 .Select(AnchorWriter.ForMember));
         }
 
         return new CodeResolveResult { Candidates = candidates, Exploratory = true };
     }
+
+    // ToString() reads parameters: not for internal calls (see SafeReflection).
+    private static bool SignatureMatches(MemberInfo member, string signature) => member switch
+    {
+        MethodBase method when SafeReflection.IsInternalCall(method) => false,
+        MethodBase method => method.ToString() == signature || AnchorWriter.Signature(method) == signature,
+        PropertyInfo property when SafeReflection.IndexParameters(property) is null => false,
+        _ => member.ToString() == signature,
+    };
 
     private LocatorResolveResult ResolveStatic(string text, string locator)
     {

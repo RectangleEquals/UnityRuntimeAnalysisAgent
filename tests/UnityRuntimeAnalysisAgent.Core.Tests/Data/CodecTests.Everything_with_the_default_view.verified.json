@@ -3,7 +3,7 @@
   "h": 1,
   "type": {
     "mvid": "{mvid}",
-    "token": 33554449,
+    "token": {token},
     "name": "Zoo.Everything"
   },
   "fields": {
@@ -57,7 +57,7 @@
     "access": {
       "enum": {
         "mvid": "{mvid}",
-        "token": 33554441,
+        "token": {token},
         "name": "Zoo.Access"
       },
       "value": 5,
@@ -66,7 +66,7 @@
     "big": {
       "enum": {
         "mvid": "{mvid}",
-        "token": 33554442,
+        "token": {token},
         "name": "Zoo.Big"
       },
       "value": 18446744073709551615,
@@ -74,12 +74,12 @@
     },
     "type": {
       "mvid": "{mvid}",
-      "token": 33554435,
+      "token": {token},
       "name": "Zoo.Plain"
     },
     "boxType": {
       "mvid": "{mvid}",
-      "token": 33554438,
+      "token": {token},
       "name": "Zoo.Box`1<System.Int32>",
       "typeArgs": [
         "System.Int32"
@@ -92,13 +92,13 @@
             "h": 1,
             "type": {
               "mvid": "{mvid}",
-              "token": 33554449,
+              "token": {token},
               "name": "Zoo.Everything"
             }
           },
           "method": {
             "mvid": "{mvid}",
-            "token": 100663335,
+            "token": {token},
             "name": "Zoo.Everything::Callback()"
           }
         }
@@ -149,7 +149,7 @@
               "ref": "x{run}:1",
               "type": {
                 "mvid": "{mvid}",
-                "token": 33554436,
+                "token": {token},
                 "name": "Zoo.Point"
               },
               "size": {
@@ -176,7 +176,7 @@
         "ref": "x{run}:2",
         "type": {
           "mvid": "{mvid}",
-          "token": 33554475,
+          "token": {token},
           "name": "Zoo.Everything/<Numbers>d__50"
         },
         "member": "lazy",
@@ -184,7 +184,7 @@
           {
             "member": {
               "mvid": "{mvid}",
-              "token": 67109000,
+              "token": {token},
               "name": "Zoo.Everything::lazy"
             }
           }
@@ -201,7 +201,7 @@
       "t": "object",
       "type": {
         "mvid": "{mvid}",
-        "token": 33554436,
+        "token": {token},
         "name": "Zoo.Point"
       },
       "fields": {
@@ -268,7 +268,7 @@
             "h": 8,
             "type": {
               "mvid": "{mvid}",
-              "token": 33554453,
+              "token": {token},
               "name": "UnityEngine.GameObject"
             },
             "unity": {
@@ -286,7 +286,7 @@
       "h": 8,
       "type": {
         "mvid": "{mvid}",
-        "token": 33554453,
+        "token": {token},
         "name": "UnityEngine.GameObject"
       },
       "unity": {
@@ -300,7 +300,7 @@
       "h": 9,
       "type": {
         "mvid": "{mvid}",
-        "token": 33554435,
+        "token": {token},
         "name": "Zoo.Plain"
       },
       "fields": {

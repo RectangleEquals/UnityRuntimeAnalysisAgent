@@ -115,4 +115,8 @@ public interface IUnityApi
     /// <summary>Where a GameObject or component is in the loaded scenes, or null for anything else (assets, destroyed
     /// objects) (main thread only).</summary>
     SceneAddress? Locate(object unityObject);
+
+    /// <summary>Every object of <paramref name="baseType"/> (loaded assets included, <c>Resources.FindObjectsOfTypeAll</c>),
+    /// counted by exact runtime type (main thread only). One scan, whatever the number of types asked about later.</summary>
+    System.Collections.Generic.IReadOnlyDictionary<Type, int> CountObjectsByType(Type baseType);
 }

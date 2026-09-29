@@ -120,6 +120,8 @@ public sealed class FakeUnityApi : IUnityApi
 
     public SceneAddress? Locate(object unityObject) => FakeWorld.Locate(unityObject) is { } at ? new SceneAddress(at.Scene, at.Path) : null;
 
+    public IReadOnlyDictionary<Type, int> CountObjectsByType(Type baseType) => World.CountByType(baseType);
+
     public void Destroy(object unityObject)
     {
         lock (_gate)

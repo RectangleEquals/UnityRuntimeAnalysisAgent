@@ -51,7 +51,10 @@ public sealed class TestHost : IDisposable
     {
         var id = peer.Send(method, paramsJson);
         var response = Task.Factory.StartNew(() => peer.AwaitResponse(id, 10_000), TaskCreationOptions.LongRunning); // its own thread
-        for (var i = 0; i < maxFrames && !response.IsCompleted; i++)
+        // Frames keep coming until the answer does (bounded by time, not frames: under load 200 quick frames can pass before
+        // a request is even dispatched, and then nothing would ever run it).
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        for (var i = 0; (i < maxFrames || DateTime.UtcNow < deadline) && !response.IsCompleted; i++)
         {
             Unity.StepFrames();
             Thread.Sleep(2);

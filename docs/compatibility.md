@@ -23,6 +23,9 @@ IL2CPP games aren't supported in this version.
 - **BepInEx's `LogOutput.log` can miss other plugins' last lines** when a game quits: BepInEx 5 writes that file on a
   timer. The agent flushes it as it stops, so its own lines are complete; the game's own player log (`Player.log`) has
   every line.
+- **Engine internal calls are listed without their parameters.** Reading the parameters of some engine functions can
+  crash the game's runtime, so for internal calls (functions implemented inside the engine) the agent never asks: their
+  names and signatures end in `(?)`. Everything else about them (their exact code reference, their IL callers) is there.
 - **Games can pause their main thread while loading.** After `Pump.StallMs` (3 s by default) without a frame, the agent
   logs a warning, and requests that need the main thread fail at once with `MAIN_THREAD_UNAVAILABLE` instead of hanging;
   they work again as soon as the game renders frames. Raise the setting if a game's loads regularly take longer.

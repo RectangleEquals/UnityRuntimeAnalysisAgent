@@ -13,7 +13,7 @@ namespace UnityRuntimeAnalysisAgent.Protocol.Tests;
 
 /// <summary>
 /// Sends the pinned protocol's fixtures of every method this build implements (the session, modes, log level, batch, jobs,
-/// the activity feed and the data model) to a real in-process agent and checks its responses: same outcome and error code as the fixture,
+/// the activity feed, the data model and code introspection) to a real in-process agent and checks its responses: same outcome and error code as the fixture,
 /// results valid against the schemas, and the connection closed after a failed handshake. Events the agent emits are
 /// validated against their schemas too.
 /// </summary>
@@ -26,6 +26,8 @@ public sealed class SessionConformanceTests : IDisposable
         "agent.selfTest",
         "handles.list", "handles.release", "handles.releaseAll", "vars.set", "vars.get", "vars.list", "vars.delete", "value.expand",
         "locator.resolve", "code.resolve",
+        "code.assemblies", "code.assembly", "code.types", "code.type", "code.member", "code.hierarchy", "code.implementations", "code.attributes",
+        "code.ilHashes", "code.il", "code.callers", "code.callees", "code.fieldAccess", "code.strings", "code.allocations", "il.index.start", "survey.start",
     ];
 
     private static readonly Lazy<IReadOnlyDictionary<string, FixtureCase>> Fixtures = new(() =>
@@ -79,6 +81,11 @@ public sealed class SessionConformanceTests : IDisposable
         {
             request = WithDataModel(request, id);
         }
+        else if (fixture.Group.StartsWith("code.", StringComparison.Ordinal) && !id.EndsWith("/index-stale", StringComparison.Ordinal))
+        {
+            var page = peer.Call(Request(Methods.CodeTypes, "{\"limit\":1}"));
+            request = WithCode(request, ((JsonString)((JsonObject)page.Result!)["cursor"]!).Value);
+        }
 
         var response = peer.Call(WithToken(request, _host.Token.Value));
         var expected = (ResponseEnvelope)Envelope.Parse(fixture.Response!);
@@ -121,6 +128,68 @@ public sealed class SessionConformanceTests : IDisposable
             var value = _host.Data.Writer(view, 1).Write(everything, new UnityRuntimeAnalysisAgent.Core.Data.Place { Root = root });
             var problems = ProtocolSchemas.Validate(value.ToString(), "common/value.schema.json");
             Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+        }
+    }
+
+    [Fact]
+    public void The_survey_and_il_index_files_match_their_schemas()
+    {
+        var hero = _unity.World.Create("Hero");
+        hero.AddComponent<Zoo.Survey.Enemy>();
+        using var peer = new Peer(_host.Transport!.Port!.Value);
+        Assert.Null(peer.Call(Hello(_host.Token.Value)).Error);
+        foreach (var (method, file, schema) in new[]
+        {
+            (Methods.SurveyStart, "survey.ndjson", "files/survey.schema.json"),
+            (Methods.IlIndexStart, "il.ndjson", "files/il_index.schema.json"),
+        })
+        {
+            var path = Path.Combine(_providers, file);
+            var extra = method == Methods.SurveyStart ? ",\"countInstances\":true,\"serializerMarkers\":{\"attributes\":[\"Zoo.Survey.FixtureSerializedAttribute\"]}" : ",\"records\":[\"calls\",\"fieldAccess\",\"strings\",\"allocations\",\"typeRefs\",\"tokens\"]";
+            var started = peer.Call(Request(method, $"{{\"outFile\":{new JsonString(path)},\"include\":[\"UnityRuntimeAnalysisAgent.TestAssemblies\"]{extra}}}"));
+            Assert.Null(started.Error);
+            var job = _host.Jobs.Wait(JobRef.Read(started.Result, "result").JobId, 60_000, CancellationToken.None);
+            Assert.True(job.State == "succeeded", $"{method}: {job.State} {job.Error?.Message}");
+            var jobResult = ProtocolSchemas.Validate(job.Result!.ToString(), $"methods/{method}.schema.json#/$defs/jobResult");
+            Assert.True(jobResult.Count == 0, string.Join(Environment.NewLine, jobResult));
+            foreach (var line in File.ReadLines(path))
+            {
+                var problems = ProtocolSchemas.Validate(line, schema);
+                Assert.True(problems.Count == 0, line + Environment.NewLine + string.Join(Environment.NewLine, problems));
+            }
+        }
+    }
+
+    [Fact]
+    public void Assembly_loaded_events_match_their_schema()
+    {
+        using var peer = new Peer(_host.Transport!.Port!.Value);
+        Assert.Null(peer.Call(Hello(_host.Token.Value)).Error);
+        Assert.Null(peer.Call(Request(Methods.EventsSubscribe, "{\"kinds\":[\"code.assemblyLoaded\"]}")).Error);
+
+        // A build the process hasn't seen: the test assembly with a new MVID and name (same lengths).
+        var bytes = File.ReadAllBytes(typeof(Zoo.Plain).Assembly.Location);
+        var mvid = typeof(Zoo.Plain).Module.ModuleVersionId.ToByteArray();
+        var at = bytes.AsSpan().IndexOf(mvid);
+        Guid.NewGuid().ToByteArray().CopyTo(bytes, at);
+        var name = System.Text.Encoding.ASCII.GetBytes("UnityRuntimeAnalysisAgent.TestAssemblies");
+        for (var i = bytes.AsSpan().IndexOf(name); i >= 0; i = bytes.AsSpan().IndexOf(name))
+        {
+            System.Text.Encoding.ASCII.GetBytes("UnityRuntimeAnalysisAgent.TestAssemblieq").CopyTo(bytes, i);
+        }
+
+        var context = new System.Runtime.Loader.AssemblyLoadContext("conformance", isCollectible: true);
+        try
+        {
+            context.LoadFromStream(new MemoryStream(bytes));
+            var ev = peer.ReceiveEvent(EventKinds.CodeAssemblyLoaded);
+            var problems = ProtocolSchemas.Validate(ev.Params.ToString(), "events/code.assemblyLoaded.schema.json#/$defs/params");
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+            Assert.Contains("TestAssemblieq", ev.Params.ToString());
+        }
+        finally
+        {
+            context.Unload();
         }
     }
 
@@ -230,6 +299,46 @@ public sealed class SessionConformanceTests : IDisposable
             .Replace("\"example-ref\"", $"\"{reference}\"", StringComparison.Ordinal)
             .Replace("\"example-cursor\"", $"\"{_host.Data.Cursors.Mint(0L)}\"", StringComparison.Ordinal);
         return (JsonObject)JsonValue.Parse(text);
+    }
+
+    /// <summary>
+    /// The code fixtures use one example anchor for everything: each is replaced by a real anchor of the kind its parameter
+    /// needs (a type, a method, a field), the example MVID by the test assembly's and the example cursor by a real one. The
+    /// index-stale fixtures keep theirs.
+    /// </summary>
+    private static JsonObject WithCode(JsonObject request, string cursor)
+    {
+        static JsonValue Anchor(System.Reflection.MemberInfo member) => UnityRuntimeAnalysisAgent.Core.Data.AnchorWriter.ForMember(member).ToJson();
+        var replacements = new Dictionary<string, JsonValue>(StringComparer.Ordinal)
+        {
+            ["type"] = Anchor(typeof(Example.Inventory)),
+            ["baseType"] = Anchor(typeof(UnityEngine.MonoBehaviour)),
+            ["implements"] = Anchor(typeof(Zoo.Il.IShape)),
+            ["method"] = Anchor(typeof(Zoo.Il.Corpus).GetMethod(nameof(Zoo.Il.Corpus.Twice))!),
+            ["member"] = Anchor(typeof(Example.Inventory).GetField("items")!),
+            ["field"] = Anchor(typeof(Zoo.Il.Corpus).GetField(nameof(Zoo.Il.Corpus.counter))!),
+        };
+        if (request["params"] is not JsonObject parameters)
+        {
+            return request;
+        }
+
+        var replaced = new JsonObject();
+        foreach (var (key, value) in parameters)
+        {
+            replaced.Add(key, key switch
+            {
+                _ when value is JsonObject anchor && anchor.ContainsKey("mvid") && replacements.TryGetValue(key, out var real) => real,
+                "methods" => new JsonArray([replacements["method"]]),
+                "mvid" => JsonValue.From(typeof(Zoo.Plain).Module.ModuleVersionId.ToString()),
+                "cursor" => JsonValue.From(cursor),
+                _ => value,
+            });
+        }
+
+        var copy = (JsonObject)JsonValue.Parse(request.ToString());
+        copy.Set("params", replaced);
+        return copy;
     }
 
     /// <summary>Substitutes the live session token for the fixture's example token; an all-zero token stays (it's the wrong-token case).</summary>
@@ -378,6 +487,8 @@ public sealed class SessionConformanceTests : IDisposable
 
         public UnityRuntimeAnalysisAgent.Core.Abstractions.SceneAddress? Locate(object unityObject) =>
             FakeWorld.Locate(unityObject) is { } at ? new(at.Scene, at.Path) : null;
+
+        public IReadOnlyDictionary<Type, int> CountObjectsByType(Type baseType) => World.CountByType(baseType);
 
         public void Dispose() => _alive = false;
     }

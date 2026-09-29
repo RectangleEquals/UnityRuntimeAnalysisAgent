@@ -107,7 +107,12 @@ public sealed class JobTests : IDisposable
     [Fact]
     public void Jobs_run_chunks_on_the_main_thread()
     {
-        var job = Jobs.Start("content.scan", j => new PingResult { Echo = "on main", UptimeMs = 0, Frame = j.RunOnMain(() => _test.Unity.Frame) });
+        var job = Jobs.Start("content.scan", j => new PingResult
+        {
+            Echo = string.Join(" ", j.RunOnMain(() => new List<string> { "on", "main" })), // a collection result isn't a routine
+            UptimeMs = 0,
+            Frame = j.RunOnMain(() => _test.Unity.Frame),
+        });
         _test.Unity.StepUntil(() => Jobs.Get(job.JobId).State == "succeeded");
         Assert.True(((JsonNumber)((JsonObject)Jobs.Get(job.JobId).Result!)["frame"]!).TryGetInt64(out var frame) && frame > 0);
     }
@@ -121,7 +126,13 @@ public sealed class JobTests : IDisposable
         var peer = _test.Connect();
         var jobRef = JobRef.Read(peer.Call(Methods.SurveyStart, "{\"outFile\":\"X:/Example/survey.ndjson\"}").Result, "result");
         Assert.Equal("survey", jobRef.Kind);
+        // A short wait answers with the current state; the job may still be queued on a busy machine, so poll until it runs.
         var early = JobInfo.Read(peer.Call(Methods.JobWait, $"{{\"jobId\":\"{jobRef.JobId}\",\"timeoutMs\":50}}").Result, "result");
+        for (var deadline = DateTime.UtcNow.AddSeconds(10); early.State == "queued" && DateTime.UtcNow < deadline;)
+        {
+            early = JobInfo.Read(peer.Call(Methods.JobWait, $"{{\"jobId\":\"{jobRef.JobId}\",\"timeoutMs\":50}}").Result, "result");
+        }
+
         Assert.Equal("running", early.State);
         Assert.Single(JobListResult.Read(peer.Call(Methods.JobList, "{\"state\":\"running\"}").Result, "result").Items);
         service.JobGate.Set();

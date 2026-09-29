@@ -220,15 +220,20 @@ public sealed partial class CodecTests : IDisposable
 
     private static string Text(JsonValue? value) => ((JsonString)value!).Value;
 
-    // MVIDs, instance ids and ref run prefixes differ between builds and runs.
+    // MVIDs, tokens (they move as the zoo grows; the anchor tests check them), instance ids and ref run prefixes differ
+    // between builds and runs.
     private static Task Snapshot(JsonValue value)
     {
         var json = JsonSerializer.Serialize(JsonDocument.Parse(value.ToString()).RootElement, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         json = Mvid().Replace(json, "\"mvid\": \"{mvid}\"");
+        json = Token().Replace(json, "\"token\": {token}");
         json = InstanceId().Replace(json, "\"instanceId\": {id}");
         json = Ref().Replace(json, "\"x{run}:$1\"");
         return Verify(json, "json");
     }
+
+    [GeneratedRegex("\"token\": \\d+")]
+    private static partial Regex Token();
 
     [GeneratedRegex("\"mvid\": \"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"")]
     private static partial Regex Mvid();

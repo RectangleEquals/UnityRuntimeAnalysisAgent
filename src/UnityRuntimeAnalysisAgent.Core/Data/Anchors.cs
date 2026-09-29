@@ -125,7 +125,14 @@ public sealed class ModuleMap : IDisposable
     /// <inheritdoc />
     public void Dispose() => _domain.AssemblyLoad -= OnAssemblyLoad;
 
-    private void OnAssemblyLoad(object? sender, AssemblyLoadEventArgs args) => Add(args.LoadedAssembly);
+    /// <summary>Raised (on the loading thread) after an assembly loaded later was added.</summary>
+    public event Action<Assembly>? AssemblyLoaded;
+
+    private void OnAssemblyLoad(object? sender, AssemblyLoadEventArgs args)
+    {
+        Add(args.LoadedAssembly);
+        AssemblyLoaded?.Invoke(args.LoadedAssembly);
+    }
 }
 
 /// <summary>
@@ -155,6 +162,7 @@ public sealed class AnchorResolver
     /// <summary>A type by anchor (a TypeDef token, with <c>typeArgs</c> for a constructed generic type).</summary>
     public Type ResolveType(Anchor anchor, string param)
     {
+        ModuleOf(anchor, param); // an unknown build is stale before anything else about the anchor can be checked
         if (Tokens.KindOf(anchor.Token) != TokenKind.Type)
         {
             throw DataErrors.InvalidParams(param + ".token", $"{param} isn't a type (token 0x{anchor.Token:x8}).");
@@ -247,18 +255,19 @@ public sealed class AnchorResolver
         }
     }
 
-    private MemberInfo ResolveDefinition(Anchor anchor, string param)
+    private Module ModuleOf(Anchor anchor, string param)
     {
         if (!Guid.TryParse(anchor.Mvid, out var mvid))
         {
             throw DataErrors.InvalidParams(param + ".mvid", $"{param}.mvid isn't a GUID.");
         }
 
-        if (!_modules.TryGet(mvid, out var module))
-        {
-            throw DataErrors.IndexStale(anchor, $"Module {anchor.Mvid} is not loaded.", LoadedBuildsOf(anchor));
-        }
+        return _modules.TryGet(mvid, out var module) ? module : throw DataErrors.IndexStale(anchor, $"Module {anchor.Mvid} is not loaded.", LoadedBuildsOf(anchor));
+    }
 
+    private MemberInfo ResolveDefinition(Anchor anchor, string param)
+    {
+        var module = ModuleOf(anchor, param);
         var token = unchecked((int)anchor.Token);
         MemberInfo? member;
         try
@@ -383,7 +392,7 @@ public static class AnchorWriter
         }
 
         var definition = type.IsGenericType && !type.IsGenericTypeDefinition ? type.GetGenericTypeDefinition() : type;
-        var anchor = new Anchor { Mvid = definition.Module.ModuleVersionId.ToString(), Token = (uint)definition.MetadataToken, Name = TypeName(type) };
+        var anchor = new Anchor { Mvid = MvidOf(definition.Module), Token = (uint)definition.MetadataToken, Name = TypeName(type) };
         if (type.IsGenericType && !type.IsGenericTypeDefinition)
         {
             anchor.TypeArgs = type.GetGenericArguments().Select(TypeRef).ToList();
@@ -407,7 +416,7 @@ public static class AnchorWriter
             definition = method.GetGenericMethodDefinition();
         }
 
-        var anchor = new Anchor { Mvid = member.Module.ModuleVersionId.ToString(), Token = (uint)definition.MetadataToken, Name = MemberName(member) };
+        var anchor = new Anchor { Mvid = MvidOf(member.Module), Token = (uint)definition.MetadataToken, Name = MemberName(member) };
         if (declaring is { IsGenericType: true, IsGenericTypeDefinition: false })
         {
             anchor.TypeArgs = declaring.GetGenericArguments().Select(TypeRef).ToList();
@@ -430,11 +439,44 @@ public static class AnchorWriter
             return JsonValue.From(type.FullName ?? type.Name);
         }
 
-        return CanAnchor(type) ? ForType(type).ToJson() : JsonValue.From(type.AssemblyQualifiedName ?? type.FullName ?? type.Name);
+        return CanAnchor(type) ? ToJson(ForType(type)) : JsonValue.From(type.AssemblyQualifiedName ?? type.FullName ?? type.Name);
     }
 
-    /// <summary>A type's readable name: <c>Ns.Outer/Inner</c>, generic arguments in angle brackets.</summary>
-    public static string TypeName(Type type)
+    // Bulk jobs name the same modules and types hundreds of thousands of times (and Mono computes a module's MVID on every
+    // call): both are cached for the life of the process.
+    private static readonly ConcurrentDictionary<Module, string> Mvids = new();
+    private static readonly ConcurrentDictionary<Type, string> TypeNames = new();
+
+    /// <summary>An anchor as JSON, built directly: the same properties, in the same order, as <c>Anchor.ToJson()</c>, which
+    /// serializes and parses back (far too slow for the hundreds of thousands of anchors a survey writes).</summary>
+    public static JsonObject ToJson(Anchor anchor)
+    {
+        var json = new JsonObject { { "mvid", JsonValue.From(anchor.Mvid) }, { "token", JsonValue.From(anchor.Token) } };
+        if (anchor.Name is not null)
+        {
+            json.Add("name", JsonValue.From(anchor.Name));
+        }
+
+        if (anchor.TypeArgs is not null)
+        {
+            json.Add("typeArgs", new JsonArray(anchor.TypeArgs));
+        }
+
+        if (anchor.MethodArgs is not null)
+        {
+            json.Add("methodArgs", new JsonArray(anchor.MethodArgs));
+        }
+
+        return json;
+    }
+
+    /// <summary>A module's MVID as the anchors write it (cached).</summary>
+    public static string MvidOf(Module module) => Mvids.GetOrAdd(module, m => m.ModuleVersionId.ToString());
+
+    /// <summary>A type's readable name: <c>Ns.Outer/Inner</c>, generic arguments in angle brackets (cached).</summary>
+    public static string TypeName(Type type) => TypeNames.GetOrAdd(type, MakeTypeName);
+
+    private static string MakeTypeName(Type type)
     {
         if (type.IsGenericParameter)
         {
@@ -467,7 +509,7 @@ public static class AnchorWriter
         var prefix = member.DeclaringType is null ? string.Empty : TypeName(member.DeclaringType) + "::";
         if (member is MethodBase method)
         {
-            var parameters = string.Join(",", method.GetParameters().Select(p => TypeName(p.ParameterType)));
+            var parameters = SafeReflection.Parameters(method) is { } known ? string.Join(",", known.Select(p => TypeName(p.ParameterType))) : "?";
             var generic = method is MethodInfo { IsGenericMethod: true } m ? "<" + string.Join(",", m.GetGenericArguments().Select(TypeName)) + ">" : string.Empty;
             return $"{prefix}{method.Name}{generic}({parameters})";
         }
@@ -485,7 +527,7 @@ public static class AnchorWriter
     internal static string Signature(MethodBase method)
     {
         var text = new StringBuilder(method.Name).Append('(');
-        text.Append(string.Join(",", method.GetParameters().Select(p => TypeName(p.ParameterType))));
+        text.Append(SafeReflection.Parameters(method) is { } known ? string.Join(",", known.Select(p => TypeName(p.ParameterType))) : "?");
         return text.Append(')').ToString();
     }
 }

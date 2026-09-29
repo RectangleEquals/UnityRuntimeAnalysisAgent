@@ -58,9 +58,12 @@ public sealed class SessionHandlerTests : IDisposable
         Assert.Equal(
             new[]
             {
-                "activity.get", "activity.list", "agent.capabilities", "agent.info", "agent.logLevel", "agent.selfTest", "agent.setMode", "batch", "cancel",
-                "code.resolve", "events.subscribe", "events.unsubscribe", "handles.list", "handles.release", "handles.releaseAll", "hello",
-                "job.cancel", "job.get", "job.list", "job.wait", "locator.resolve", "ping", "value.expand", "vars.delete", "vars.get", "vars.list", "vars.set",
+                "activity.get", "activity.list", "agent.capabilities", "agent.info", "agent.logLevel", "agent.selfTest", "agent.setMode",
+                "batch", "cancel", "code.allocations", "code.assemblies", "code.assembly", "code.attributes", "code.callees",
+                "code.callers", "code.fieldAccess", "code.hierarchy", "code.il", "code.ilHashes", "code.implementations", "code.member",
+                "code.resolve", "code.strings", "code.type", "code.types", "events.subscribe", "events.unsubscribe", "handles.list",
+                "handles.release", "handles.releaseAll", "hello", "il.index.start", "job.cancel", "job.get", "job.list", "job.wait",
+                "locator.resolve", "ping", "survey.start", "value.expand", "vars.delete", "vars.get", "vars.list", "vars.set",
             },
             caps.Methods.Select(m => m.Name));
         Assert.Equal(120_000, caps.Methods.Single(m => m.Name == "job.wait").DefaultTimeoutMs);

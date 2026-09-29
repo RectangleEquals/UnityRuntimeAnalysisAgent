@@ -13,7 +13,8 @@ rules that keep the plugin working across many Unity games. The project is pre-r
 | `src/UnityRuntimeAnalysisAgent.Api` | The small public API that scripts and mods under test compile against. |
 | `src/UnityRuntimeAnalysisAgent.BepInEx5` | The BepInEx 5 plugin entry point that wires everything together. |
 | `tests/*.Core.Tests`, `*.Api.Tests`, `*.Protocol.Tests` | Unit tests. Run anywhere, no game needed. |
-| `tests/UnityRuntimeAnalysisAgent.TestAssemblies` | Types the tests inspect: a type zoo, stand-ins for Unity types (with the real full names), a fake scene. Its own assembly, so tests can read it from disk with dnlib. |
+| `tests/UnityRuntimeAnalysisAgent.TestAssemblies` | Types the tests inspect: a type zoo, an IL corpus, stand-ins for Unity types (with the real full names), a fake scene. Its own assembly, so tests can read it from disk with dnlib. |
+| `tests/UnityRuntimeAnalysisAgent.TestAssemblies.Broken`, `.Missing` | An assembly whose dependency (`Missing`) is deliberately not deployed with the tests: some of its types can't load, like a mod with a missing dependency. |
 | `build/Packager` | Build-time tool that makes the release package (see below). |
 | `tools/AgentClient` | A small client library: connect, authenticate, send requests, receive events. |
 | `tools/AgentConsole` | A developer console for talking to a running agent (built on `AgentClient`). |

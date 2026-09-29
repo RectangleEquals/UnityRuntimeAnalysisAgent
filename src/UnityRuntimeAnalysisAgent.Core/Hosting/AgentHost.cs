@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Reflection;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -8,6 +10,7 @@ using UnityLudometry.Protocol.Json;
 using UnityLudometry.Protocol.Messages;
 using UnityRuntimeAnalysisAgent.Core.Abstractions;
 using UnityRuntimeAnalysisAgent.Core.Discovery;
+using UnityRuntimeAnalysisAgent.Core.Code;
 using UnityRuntimeAnalysisAgent.Core.Data;
 using UnityRuntimeAnalysisAgent.Core.Dispatch;
 using UnityRuntimeAnalysisAgent.Core.Jobs;
@@ -70,6 +73,9 @@ public sealed class AgentHost : IDisposable
         Events.EmittedKinds.Add(EventKinds.JobFinished);
         Jobs = new JobManager(_config.MaxConcurrentJobs, Events, Pump, Log);
         Data = new DataModel(unity ?? HeadlessUnity.Instance, _config.MaxHandles);
+        Code = new CodeModel(Data.Modules);
+        Events.EmittedKinds.Add(EventKinds.CodeAssemblyLoaded);
+        Data.Modules.AssemblyLoaded += OnAssemblyLoaded;
         Dispatcher = new Dispatcher(Modes, Capabilities, Pump, Activity, Log);
         Session = new SessionHandler(Token, Dispatcher, BuildAgentInfo);
         Dispatcher.Register(new SessionService(this));
@@ -78,6 +84,7 @@ public sealed class AgentHost : IDisposable
         Dispatcher.Register(new BatchService(Dispatcher, Pump));
         Dispatcher.Register(new DiagnosticsService(this));
         Dispatcher.Register(new DataServices(Data, Pump));
+        Dispatcher.Register(new CodeServices(Data, Code, Jobs, environment));
         foreach (var warning in _config.Warnings)
         {
             Log.Warning(warning);
@@ -86,6 +93,9 @@ public sealed class AgentHost : IDisposable
 
     /// <summary>The data model: anchors, handles, variables, refs and the value codec.</summary>
     public DataModel Data { get; }
+
+    /// <summary>Code introspection: assemblies, types and cross-references.</summary>
+    public CodeModel Code { get; }
 
     /// <summary>The session token of this start.</summary>
     public SessionToken Token { get; }
@@ -221,6 +231,33 @@ public sealed class AgentHost : IDisposable
 
     /// <inheritdoc />
     public void Dispose() => Shutdown();
+
+    // code.assemblyLoaded: the summary hashes the file, so it's built off the loading thread, and only when someone listens.
+    private void OnAssemblyLoaded(Assembly assembly)
+    {
+        if (_stopped || !Events.HasSubscribers(EventKinds.CodeAssemblyLoaded))
+        {
+            return;
+        }
+
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            try
+            {
+                var clock = Pump.Clock;
+                Events.Publish(EventKinds.CodeAssemblyLoaded, new AssemblyLoadedEventParams
+                {
+                    Assembly = Code.Catalog.Summary(assembly),
+                    Frame = clock.FrameCount,
+                    RealtimeMs = (long)(clock.Realtime * 1000),
+                });
+            }
+            catch (Exception e)
+            {
+                Log.Warning($"code.assemblyLoaded for {assembly.GetName().Name} failed: {e.Message}");
+            }
+        });
+    }
 
     internal AgentInfo BuildAgentInfo()
     {
@@ -408,5 +445,7 @@ public sealed class AgentHost : IDisposable
         public object? FindChild(object gameObjectOrComponent, string path) => null;
 
         public SceneAddress? Locate(object unityObject) => null;
+
+        public IReadOnlyDictionary<Type, int> CountObjectsByType(Type baseType) => new Dictionary<Type, int>();
     }
 }

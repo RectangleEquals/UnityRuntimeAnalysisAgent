@@ -291,14 +291,22 @@ public sealed class JobManager : IDisposable
         }
     }
 
+    private sealed class Holder<T>
+    {
+        public Holder(T value) => Value = value;
+
+        public T Value { get; }
+    }
+
     internal T RunOnMain<T>(Func<T> chunk, CancellationToken cancellation)
     {
         T result = default!;
         Exception? error = null;
         using var done = new ManualResetEventSlim(false);
-        _pump.Enqueue(new PumpWork(() => chunk(), r =>
+        // The result travels in a holder: a chunk that returns a collection must not be taken for a multi-frame routine.
+        _pump.Enqueue(new PumpWork(() => new Holder<T>(chunk()), r =>
         {
-            result = (T)r!;
+            result = ((Holder<T>)r!).Value;
             done.Set();
         }, e =>
         {

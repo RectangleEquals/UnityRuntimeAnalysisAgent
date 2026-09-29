@@ -5,6 +5,7 @@
     <OutputType>Library</OutputType>
     <IsTestProject>false</IsTestProject>
     <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn>$(NoWarn);CS0067;CS0169;CS0414;CS0649;CA1822;IDE0051;IDE0052</NoWarn>
   </PropertyGroup>
 
