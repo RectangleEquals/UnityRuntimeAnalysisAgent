@@ -11,17 +11,17 @@ using UnityRuntimeAnalysisAgent.Core.Runtime;
 
 namespace UnityRuntimeAnalysisAgent.Core.Session;
 
-/// <summary><c>agent.selfTest</c>: checks the agent's own plumbing in the running game. More checks join as features land.</summary>
+/// <summary><c>agent.healthCheck</c>: checks the agent's own plumbing in the running game. More checks join as features land.</summary>
 internal sealed class DiagnosticsService
 {
     private readonly AgentHost _host;
 
     public DiagnosticsService(AgentHost host) => _host = host;
 
-    [RpcMethod(Methods.AgentSelfTest, DefaultTimeoutMs = 15_000)]
-    public IEnumerable SelfTest(RequestContext context)
+    [RpcMethod(Methods.AgentHealthCheck, DefaultTimeoutMs = 15_000)]
+    public IEnumerable HealthCheck(RequestContext context)
     {
-        var checks = new List<SelfTestCheck>();
+        var checks = new List<HealthCheckItem>();
 
         // The main thread: this runs in a frame; wait for the next one and check the frame counter moved.
         var clock = Stopwatch.StartNew();
@@ -45,9 +45,9 @@ internal sealed class DiagnosticsService
         var warnings = _host.Config.Warnings;
         checks.Add(Check("config.valid", warnings.Count == 0, clock.ElapsedMilliseconds, warnings.Count == 0 ? "all settings valid" : string.Join(" ", warnings)));
 
-        yield return new AgentSelfTestResult { Passed = checks.All(c => c.Passed), Checks = checks };
+        yield return new AgentHealthCheckResult { Passed = checks.All(c => c.Passed), Checks = checks };
     }
 
-    private static SelfTestCheck Check(string name, bool passed, long durationMs, string message) =>
+    private static HealthCheckItem Check(string name, bool passed, long durationMs, string message) =>
         new() { Name = name, Passed = passed, DurationMs = durationMs, Message = message };
 }

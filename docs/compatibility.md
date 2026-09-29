@@ -1,6 +1,6 @@
 # Compatibility
 
-What the agent has been verified with, and known limitations. This page grows as the agent is tested on more games.
+What the agent has been verified with, and known limitations. This page grows as the agent is verified with more games.
 
 ## Verified
 

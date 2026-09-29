@@ -518,9 +518,6 @@ public sealed class UnityApi : IUnityApi
     private void OnActiveSceneChanged(Scene previous, Scene next) =>
         SceneChanged?.Invoke(new SceneChange { Change = "activeChanged", Scene = Facts(next, Handle(next)), PreviousActive = previous.name });
 
-    /// <summary>Destroys the pump host now, like a game destroying stray objects would (for the watchdog self-test).</summary>
-    public void DestroyHostForTest() => DestroyHost();
-
     private void CreateHost()
     {
         if (_alive || _tick is null || _endOfFrame is null)

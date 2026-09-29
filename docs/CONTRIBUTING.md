@@ -10,7 +10,7 @@ rules that keep the plugin working across many Unity games. The project is pre-r
 | `src/UnityRuntimeAnalysisAgent.Core` | The agent itself: protocol, request handling, analysis and instrumentation. Knows nothing about Unity or the loader. |
 | `src/UnityRuntimeAnalysisAgent.Unity` | Unity bindings: everything that touches `UnityEngine`. |
 | `src/UnityRuntimeAnalysisAgent.Overlay` | The in-game overlay (IMGUI). |
-| `src/UnityRuntimeAnalysisAgent.Api` | The small public API that scripts and mods under test compile against. |
+| `src/UnityRuntimeAnalysisAgent.Api` | The small public API that snippets, live patches and in-game mod tests compile against. |
 | `src/UnityRuntimeAnalysisAgent.BepInEx5` | The BepInEx 5 plugin entry point that wires everything together. |
 | `build/Packager` | Build-time tool that makes the release package (see below). |
 | `tools/AgentClient` | A small client library: connect, authenticate, send requests, receive events. |

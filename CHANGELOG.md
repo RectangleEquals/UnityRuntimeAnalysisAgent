@@ -2,7 +2,7 @@
 
 ## 0.1.0-dev (unreleased)
 - Repository and toolchain scaffolding: solution, projects, central package management.
-- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.2`).
+- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.3`).
 - Transport, handshake and discovery: framed connections over a named pipe (restricted to the current user where the
   runtime allows) or a loopback TCP fallback, the token-authenticated `hello` handshake, `ping`, `agent.info`,
   `agent.capabilities`, `cancel` and event subscriptions, and an atomically written discovery file.
@@ -17,7 +17,7 @@
   ([configuration](docs/configuration.md)).
 - The BepInEx 5 plugin: the agent now runs inside games. Unity bindings (a hidden main-thread pump host that survives
   the game destroying it; reflection binders for optional modules), the loader bridge (settings, logs, plugins,
-  shortcuts), every setting bound with its default and description, `agent.selfTest`, and the release package
+  shortcuts), every setting bound with its default and description, `agent.healthCheck`, and the release package
   (`dist/`: the six plugin assemblies, a verified `package.json` and the zip, byte-reproducible).
   Verified with BepInEx 5.4.23.5 in a Unity 6 Mono player ([compatibility](docs/compatibility.md)).
 - The data model: exact code references (anchors: module version id + metadata token, the same ones static tools
