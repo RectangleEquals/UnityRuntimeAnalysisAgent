@@ -19,6 +19,7 @@ public sealed class UnityApi : IUnityApi
 {
     private readonly IAgentLogger _log;
     private GameObject? _host;
+    private GameControl? _control;
     private Action? _tick;
     private Action? _endOfFrame;
     private int _mainThreadId;
@@ -59,6 +60,12 @@ public sealed class UnityApi : IUnityApi
 
     /// <inheritdoc />
     public IContentApi? Content { get; } = new ContentApi();
+
+    /// <inheritdoc />
+    public IGameControl? Control => _control ??= new GameControl(scene => Facts(scene, Handle(SceneManager.GetActiveScene())));
+
+    /// <inheritdoc />
+    public IUiApi? Ui { get; } = new UiApi();
 
     // Unity callbacks must never throw into the game.
     private void Guard(Action action)

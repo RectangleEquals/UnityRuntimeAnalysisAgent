@@ -104,12 +104,18 @@ public sealed class AgentHost : IDisposable
         Instrumentation.RegisterTrigger(Execution.Trigger);
         RegisterCleanup("revert live patches", Execution.Dispose);
         Events.EmittedKinds.Add(EventKinds.ExecEmit);
+        var control = new ControlServices(Data, Pump, unity ?? HeadlessUnity.Instance);
+        Dispatcher.Register(control);
+        Instrumentation.RegisterTrigger(control.Trigger);
         foreach (var kind in new[] { EventKinds.HookHits, EventKinds.TraceRecords, EventKinds.WatchChanges, EventKinds.EventRaised, EventKinds.Exception, EventKinds.AgentWarning })
         {
             Events.EmittedKinds.Add(kind);
         }
 
         Capabilities.SetModule("firstChanceExceptions", ExceptionMonitor.FirstChanceSupported, null, ExceptionMonitor.FirstChanceSupported ? null : "The runtime has no AppDomain.FirstChanceException.");
+        var ui = unity?.Ui;
+        Capabilities.SetModule("ugui", ui?.UguiStatus.Available ?? false, ui?.UguiStatus.Version, ui is null ? "There is no game (no Unity)." : ui.UguiStatus.Reason);
+        Capabilities.SetModule("tmp", ui?.TmpStatus.Available ?? false, ui?.TmpStatus.Version, ui is null ? "There is no game (no Unity)." : ui.TmpStatus.Reason);
         if (unity?.Content is { } content)
         {
             var addressables = content.AddressablesStatus;
@@ -545,6 +551,10 @@ public sealed class AgentHost : IDisposable
         public object CreateScriptableObject(Type type) => throw new NotSupportedException("No Unity in this process.");
 
         public IContentApi? Content => null;
+
+        public IGameControl? Control => null;
+
+        public IUiApi? Ui => null;
 
         public event Action<string, string, string>? LogMessage
         {

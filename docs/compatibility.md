@@ -49,6 +49,12 @@ IL2CPP games aren't supported in this version.
 - **Loaded assemblies stay until the game restarts.** The game's runtime can't unload assemblies, so every snippet,
   patch set and mod build the agent loads stays in memory; `agent.info` counts them and the agent warns when the count
   gets high.
+- **Only uGUI and TextMeshPro can be driven.** `ui.*` works with Unity's uGUI (and TextMeshPro) on active canvases.
+  UI Toolkit and IMGUI (`OnGUI`) screens aren't listed or clickable; reach them through the game's own methods
+  (`obj.invoke`) instead. There is no low-level input injection.
+- **Pausing uses the time scale.** `time.pause` and `time.step` set `Time.timeScale`, so gameplay driven by unscaled
+  time or a game's own clock keeps going.
+- **`app.quit`'s exit code needs Unity 2018.2 or newer**; on older versions the game quits with Unity's own code.
 - **Games can pause their main thread while loading.** After `Pump.StallMs` (3 s by default) without a frame, the agent
   logs a warning, and requests that need the main thread fail at once with `MAIN_THREAD_UNAVAILABLE` instead of hanging;
   they work again as soon as the game renders frames. Raise the setting if a game's loads regularly take longer.

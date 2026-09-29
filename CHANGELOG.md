@@ -71,3 +71,10 @@
   (`patch.apply`, `patch.revert`, `patch.list`, removed when the agent stops), the process's Harmony patches whoever owns
   them (`patch.inspect`, `patches.all`), and mod hot-reload (`mod.reload`, `mod.unload`, `mod.list`). `hook.verify` can
   use a snippet as its trigger. `agent.info` counts the assemblies the agent loaded and the live-patched methods.
+- Game control: time (`time.info`; `time.scale`, `time.pause`, `time.resume` and `time.step`, which runs the game for
+  exactly N frames and pauses it again; `time.waitFrames` and `time.waitSeconds`, which wait without holding up the
+  game), scenes (`scene.load`, `scene.unload`, `scene.setActive`), uGUI and TextMeshPro (`ui.snapshot` with each element's
+  kind, text, images, state, options and screen rectangle; `ui.find`; `ui.click` through the EventSystem, `ui.setText`,
+  `ui.setValue`, `ui.submit`, `ui.cancel`, `ui.select`, all through the game's own handlers), and the application
+  (`app.info`, `app.runInBackground`, `app.quit`). `hook.verify` can use a UI click as its trigger. The agent's own UI
+  is never listed or driven. Capabilities report `module:ugui` and `module:tmp`.

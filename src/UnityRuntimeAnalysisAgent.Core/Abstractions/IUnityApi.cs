@@ -160,6 +160,12 @@ public interface IUnityApi
     /// <summary>Content (summaries, bundles, Resources, Addressables, export readback), or null without Unity.</summary>
     IContentApi? Content { get; }
 
+    /// <summary>Time, scenes and the application, or null without Unity.</summary>
+    IGameControl? Control { get; }
+
+    /// <summary>uGUI and TextMeshPro, or null without Unity.</summary>
+    IUiApi? Ui { get; }
+
     /// <summary>Raised on the main thread when a scene loads, unloads or becomes active.</summary>
     event Action<SceneChange>? SceneChanged;
 
