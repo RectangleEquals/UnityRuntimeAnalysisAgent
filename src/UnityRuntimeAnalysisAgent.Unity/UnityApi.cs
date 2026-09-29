@@ -35,6 +35,23 @@ public sealed class UnityApi : IUnityApi
         SceneManager.sceneLoaded += (scene, mode) => Guard(() => OnSceneLoaded(scene, mode));
         SceneManager.sceneUnloaded += scene => Guard(() => OnSceneUnloaded(scene));
         SceneManager.activeSceneChanged += (previous, next) => Guard(() => OnActiveSceneChanged(previous, next));
+        Application.logMessageReceivedThreaded += OnLogMessage;
+    }
+
+    /// <inheritdoc />
+    public event Action<string, string, string>? LogMessage;
+
+    // Any thread; a handler that throws must never reach Unity's logger (it would log again).
+    private void OnLogMessage(string message, string stackTrace, LogType type)
+    {
+        try
+        {
+            LogMessage?.Invoke(message, stackTrace, type.ToString());
+        }
+        catch (Exception)
+        {
+            // Swallowed on purpose: see above.
+        }
     }
 
     /// <inheritdoc />

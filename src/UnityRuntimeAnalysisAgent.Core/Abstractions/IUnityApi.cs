@@ -162,4 +162,8 @@ public interface IUnityApi
 
     /// <summary>Raised on the main thread when a scene loads, unloads or becomes active.</summary>
     event Action<SceneChange>? SceneChanged;
+
+    /// <summary>Raised for every message Unity logs, on the thread that logged it: (message, stack trace, type:
+    /// <c>Log</c>, <c>Warning</c>, <c>Error</c>, <c>Assert</c> or <c>Exception</c>).</summary>
+    event Action<string, string, string>? LogMessage;
 }

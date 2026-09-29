@@ -43,6 +43,14 @@ public sealed class ViewOptions
     /// <summary>Safe mode: no getters, no calls into Unity (for values captured inside hooks).</summary>
     public bool Safe { get; set; }
 
+    /// <summary>Values captured at call time (hooks, traces, event subscriptions): stubs are marked <c>live</c>, since
+    /// expanding one reads the object as it is then, not as it was at the call.</summary>
+    public bool Capture { get; set; }
+
+    /// <summary>With <see cref="Capture"/>: keep captured objects alive for later expansion. Without it they're held
+    /// weakly (no handles), so instrumentation never keeps game objects alive; their refs expire once collected.</summary>
+    public bool Retain { get; set; }
+
     /// <summary>Expand a Unity object at the root instead of describing it (for inspecting one object).</summary>
     public bool ExpandRootUnityObject { get; set; }
 
@@ -84,6 +92,9 @@ public sealed class ExpansionEntry
 
     /// <summary>A value kept as it was (values that can't be re-read by path, or captured values).</summary>
     public object? Retained { get; set; }
+
+    /// <summary>A weakly held retained object (captured values without <c>retain</c>).</summary>
+    public WeakReference? WeakRetained { get; set; }
 
     /// <summary>Whether <see cref="Retained"/> is set (it may be a boxed struct, or null).</summary>
     public bool HasRetained { get; set; }

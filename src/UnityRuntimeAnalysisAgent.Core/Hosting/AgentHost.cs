@@ -13,6 +13,7 @@ using UnityRuntimeAnalysisAgent.Core.Discovery;
 using UnityRuntimeAnalysisAgent.Core.Code;
 using UnityRuntimeAnalysisAgent.Core.Data;
 using UnityRuntimeAnalysisAgent.Core.Dispatch;
+using UnityRuntimeAnalysisAgent.Core.Instrumentation;
 using UnityRuntimeAnalysisAgent.Core.Jobs;
 using UnityRuntimeAnalysisAgent.Core.Runtime;
 using UnityRuntimeAnalysisAgent.Core.Session;
@@ -93,6 +94,16 @@ public sealed class AgentHost : IDisposable
         }
 
         Dispatcher.Register(new ContentServices(Data, Code, Pump, Jobs, environment.AgentVersion));
+        Instrumentation = new InstrumentationServices(Data, Code, Pump, Jobs, Events, unity ?? HeadlessUnity.Instance, Modes, _config.MaxInstrumentedMethods,
+            _config.RemoveInstrumentationOnDisconnect, environment.AgentVersion, Warn);
+        Dispatcher.Register(Instrumentation);
+        RegisterCleanup("remove instrumentation", Instrumentation.Dispose);
+        foreach (var kind in new[] { EventKinds.HookHits, EventKinds.TraceRecords, EventKinds.WatchChanges, EventKinds.EventRaised, EventKinds.Exception, EventKinds.AgentWarning })
+        {
+            Events.EmittedKinds.Add(kind);
+        }
+
+        Capabilities.SetModule("firstChanceExceptions", ExceptionMonitor.FirstChanceSupported, null, ExceptionMonitor.FirstChanceSupported ? null : "The runtime has no AppDomain.FirstChanceException.");
         if (unity?.Content is { } content)
         {
             var addressables = content.AddressablesStatus;
@@ -205,6 +216,19 @@ public sealed class AgentHost : IDisposable
 
     /// <summary>Sends an event to every connection subscribed to its kind.</summary>
     public void Publish(string kind, ProtocolMessage payload, JsonObject? context = null) => Events.Publish(kind, payload, context);
+
+    /// <summary>Instrumentation: hooks, traces, profiles, verification, watches, event subscriptions, exceptions.</summary>
+    internal InstrumentationServices Instrumentation { get; }
+
+    // An agent.warning to subscribers, and the log.
+    private void Warn(string code, string message, JsonObject data)
+    {
+        Log.Warning(message);
+        if (!_stopped && Events.HasSubscribers(EventKinds.AgentWarning))
+        {
+            Events.Publish(EventKinds.AgentWarning, new AgentWarningParams { Code = code, Message = message, Data = data });
+        }
+    }
 
     /// <summary>Removes every side effect of the agent (idempotent).</summary>
     public void Shutdown()
@@ -332,8 +356,8 @@ public sealed class AgentHost : IDisposable
                 Connections = ConnectionCount,
                 JobsRunning = Jobs.Running,
                 // Filled in by the components that own these as they arrive; none exist yet.
-                HooksActive = 0,
-                PatchesActive = 0,
+                HooksActive = Instrumentation.Hooks.Count,
+                PatchesActive = Instrumentation.Instrumenter.PatchedMethods,
                 Handles = 0,
                 AssembliesLoadedByAgent = 0,
             },
@@ -428,6 +452,7 @@ public sealed class AgentHost : IDisposable
             }
 
             Session.CancelAll(connection);
+            Instrumentation.OnDisconnect(connection.Id.ToString(CultureInfo.InvariantCulture));
             release();
         };
         connection.Start();
@@ -512,6 +537,12 @@ public sealed class AgentHost : IDisposable
         public object CreateScriptableObject(Type type) => throw new NotSupportedException("No Unity in this process.");
 
         public IContentApi? Content => null;
+
+        public event Action<string, string, string>? LogMessage
+        {
+            add { }
+            remove { }
+        }
 
         public event Action<SceneChange>? SceneChanged
         {

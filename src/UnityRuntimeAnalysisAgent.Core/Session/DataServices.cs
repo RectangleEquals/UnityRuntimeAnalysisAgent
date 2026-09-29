@@ -151,7 +151,9 @@ internal sealed class DataServices
         Place place;
         if (entry.HasRetained)
         {
-            value = entry.Retained;
+            value = entry.WeakRetained is { } weak
+                ? weak.Target ?? throw DataErrors.RefExpired(p.Ref, entry.Locator)
+                : entry.Retained;
             place = new Place { LocatorBase = entry.Locator };
         }
         else

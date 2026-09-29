@@ -53,6 +53,7 @@ public sealed class MainThreadPump
     private long _ticks;
     private double _lastTickAtMs;
     private int _started;
+    private int _mainThreadId;
 
     /// <summary>Creates the pump. <paramref name="nowMs"/> is a monotonic clock in milliseconds (default: a stopwatch).</summary>
     public MainThreadPump(IUnityApi unity, double frameBudgetMs, IAgentLogger log, Func<double>? nowMs = null)
@@ -116,6 +117,13 @@ public sealed class MainThreadPump
     }
 
     internal double NowMs => _nowMs();
+
+    /// <summary>The main thread's managed id, once a frame has ticked (0 before).</summary>
+    public int MainThreadId => Volatile.Read(ref _mainThreadId);
+
+    /// <summary>Raised on the main thread at the start of every frame, after the clock is published (watches and frame
+    /// sampling use it). Handlers must be quick; one that throws is logged and the frame goes on.</summary>
+    public event Action<FrameTime>? Ticked;
 
     /// <summary>Creates the pump host (the game then calls <see cref="Tick"/> every frame).</summary>
     public void Start()
@@ -181,6 +189,8 @@ public sealed class MainThreadPump
 
             Interlocked.Increment(ref _ticks);
             IsStalled = false;
+            Volatile.Write(ref _mainThreadId, Environment.CurrentManagedThreadId);
+            RaiseTicked(clock);
             var ranAny = false;
             bool BudgetLeft() => !ranAny || _nowMs() - start < FrameBudgetMs;
 
@@ -219,6 +229,27 @@ public sealed class MainThreadPump
         {
             // Never let the agent break the game's frame.
             _log.Error("The main-thread pump failed in a frame.", e);
+        }
+    }
+
+    private void RaiseTicked(FrameTime clock)
+    {
+        var handlers = Ticked;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (Action<FrameTime> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(clock);
+            }
+            catch (Exception e)
+            {
+                _log.Error("A per-frame handler failed.", e);
+            }
         }
     }
 

@@ -39,6 +39,10 @@ IL2CPP games aren't supported in this version.
 - **Addressables labels can stand for thousands of locations.** In `content.scan.start` each key's record keeps its
   first 200 locations (and each location its first 64 dependencies); the footer's `redactions` counts what was left out.
   `addressables.locate` on such a key returns every location, which can exceed the maximum message size.
+- **Hooks on very small methods may never fire.** The runtime can copy (inline) a tiny method, such as a one-line
+  property getter, into the methods that call it; a patch on the tiny method is then applied without error but never
+  runs, and traces show only the calls that really happened. `hook.verify` tells you whether a method fires, how likely
+  it is to be inlined, and which callers to hook instead.
 - **Games can pause their main thread while loading.** After `Pump.StallMs` (3 s by default) without a frame, the agent
   logs a warning, and requests that need the main thread fail at once with `MAIN_THREAD_UNAVAILABLE` instead of hanging;
   they work again as soon as the game renders frames. Raise the setting if a game's loads regularly take longer.

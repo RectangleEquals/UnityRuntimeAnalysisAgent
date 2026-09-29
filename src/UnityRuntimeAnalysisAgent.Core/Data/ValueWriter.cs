@@ -68,7 +68,9 @@ public sealed class ValueWriter
     {
         Count(reason);
         var info = new JsonObject { { "reason", JsonValue.From(reason) } };
-        long? h = value is not null && !value.GetType().IsValueType && value is not string ? Mint(value) : null;
+        var weak = _view.Capture && !_view.Retain;
+        long? h = !weak && value is not null && !value.GetType().IsValueType && value is not string ? Mint(value) : null;
+        live ??= _view.Capture ? true : null;
         if (reason != "policy")
         {
             info.Add("ref", JsonValue.From(MintRef(value, place, range, h)));
@@ -538,6 +540,11 @@ public sealed class ValueWriter
         else if (h is not null)
         {
             entry.Root = new Target { H = h.Value };
+        }
+        else if (_view.Capture && !_view.Retain && value is not null && !value.GetType().IsValueType)
+        {
+            entry.WeakRetained = new WeakReference(value);
+            entry.HasRetained = true;
         }
         else
         {

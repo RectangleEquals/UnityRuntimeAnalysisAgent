@@ -51,3 +51,16 @@
   textures in use, read back through the GPU when they aren't readable, in strips spread over frames; JSON of objects' data; text assets' raw bytes;
   with a manifest) and `content.scan.start` (an NDJSON inventory of loaded assets, Addressables keys and bundles).
 - `code.attributes` no longer fails on a method whose parameter types come from a missing assembly.
+- Instrumentation, all of it reversible and owned by the client that created it: method hooks (`hook.add` with phases,
+  captures, conditions on arguments or the instance, sampling, `maxHits` and a ring buffer; `hook.hits`, `hook.list`,
+  `hook.remove`, `hooks.clear`, batched `hook.hits` events), call traces (`trace.start` as a job with stop conditions,
+  an NDJSON trace file, a summary with the ordered sequence, a call tree and per-method counts and durations, live
+  `trace.records` events; `trace.stop`), timing (`profile.start`: per-method calls, total, mean, p50, p95, max and by
+  thread, plus frame times over the window), patch-point verification (`hook.verify`: arms, triggers, counts hits,
+  assesses the chance of inlining and names callers to patch instead), value watches (`watch.add`, `watch.changes`,
+  `watch.list`, `watch.remove`, `watch.changes` events), C# and UnityEvent subscriptions (`event.subscribe`,
+  `event.unsubscribe`, `event.raised` events), exception monitoring (`exceptions.monitor`: the game's log, and
+  first-chance exceptions where the runtime raises them, filtered and rate-limited; `exception` events), and
+  `instrumentation.status` / `instrumentation.clear`. A fault in instrumentation turns that instrumentation off with an
+  `agent.warning` instead of affecting the game. Settings `Instrumentation.MaxMethods` and
+  `Instrumentation.RemoveOnDisconnect`; `agent.info` reports hooks and patched methods.

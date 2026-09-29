@@ -51,6 +51,12 @@ public sealed class AgentConfig
     /// <summary>Config key of <see cref="MaxHandles"/>.</summary>
     public const string MaxHandlesKey = "Handles.Max";
 
+    /// <summary>Config key of <see cref="MaxInstrumentedMethods"/>.</summary>
+    public const string MaxInstrumentedMethodsKey = "Instrumentation.MaxMethods";
+
+    /// <summary>Config key of <see cref="RemoveInstrumentationOnDisconnect"/>.</summary>
+    public const string RemoveOnDisconnectKey = "Instrumentation.RemoveOnDisconnect";
+
     /// <summary>Where the discovery file is written. No default: without it the agent listens but publishes nothing.</summary>
     public string? ProvidersDir { get; set; }
 
@@ -80,6 +86,12 @@ public sealed class AgentConfig
 
     /// <summary>Live object handles kept before the least recently used are released (default 20,000).</summary>
     public int MaxHandles { get; set; } = 20_000;
+
+    /// <summary>Methods instrumented at once (default 2,000).</summary>
+    public int MaxInstrumentedMethods { get; set; } = 2000;
+
+    /// <summary>Remove a client's non-persistent instrumentation when it disconnects (default true).</summary>
+    public bool RemoveInstrumentationOnDisconnect { get; set; } = true;
 
     /// <summary>Problems found while reading (each already resolved to a default).</summary>
     public IReadOnlyList<string> Warnings => _warnings;
@@ -157,6 +169,8 @@ public sealed class AgentConfig
         config.MaxConcurrentJobs = config.ReadInt(source, MaxConcurrentJobsKey, config.MaxConcurrentJobs, 1, 16);
         config.MaxEventQueueBytes = config.ReadInt(source, MaxEventQueueBytesKey, config.MaxEventQueueBytes, 64 * 1024, 256 * 1024 * 1024);
         config.MaxHandles = config.ReadInt(source, MaxHandlesKey, config.MaxHandles, 100, 1_000_000);
+        config.MaxInstrumentedMethods = config.ReadInt(source, MaxInstrumentedMethodsKey, config.MaxInstrumentedMethods, 1, 20_000);
+        config.RemoveInstrumentationOnDisconnect = config.ReadBool(source, RemoveOnDisconnectKey, config.RemoveInstrumentationOnDisconnect);
         return config;
     }
 
@@ -169,7 +183,25 @@ public sealed class AgentConfig
         new KeyValuePair<string, long>(MaxConcurrentJobsKey, MaxConcurrentJobs),
         new KeyValuePair<string, long>(MaxEventQueueBytesKey, MaxEventQueueBytes),
         new KeyValuePair<string, long>(MaxHandlesKey, MaxHandles),
+        new KeyValuePair<string, long>(MaxInstrumentedMethodsKey, MaxInstrumentedMethods),
     };
+
+    private bool ReadBool(IConfigSource source, string key, bool fallback)
+    {
+        var text = source.Get(key);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return fallback;
+        }
+
+        if (bool.TryParse(text!.Trim(), out var value))
+        {
+            return value;
+        }
+
+        _warnings.Add($"{key} '{text}' is not true or false; using {fallback.ToString().ToLowerInvariant()}.");
+        return fallback;
+    }
 
     private int ReadInt(IConfigSource source, string key, int fallback, int min, int max)
     {
