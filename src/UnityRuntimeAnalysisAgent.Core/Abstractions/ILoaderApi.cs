@@ -74,6 +74,12 @@ public interface ILoaderApi
     /// <summary>Raised for every line the loader logs.</summary>
     event Action<LoaderLogEntry>? LoaderLog;
 
+    /// <summary>The live instance of a plugin the loader loaded, or null. Main thread only.</summary>
+    object? FindPluginInstance(string guid);
+
+    /// <summary>The plugin a type declares (GUID, name, version; no path), or null if it isn't a plugin type.</summary>
+    LoaderPluginInfo? PluginMetadata(Type type);
+
     /// <summary>Instantiates a plugin type on a hidden host object (for reloaded mods). Main thread only.</summary>
     object InstantiatePlugin(Type pluginType);
 

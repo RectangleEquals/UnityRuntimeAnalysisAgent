@@ -43,6 +43,22 @@ public static class AgentErrors
     /// <summary>Wraps an exception thrown by invoked game code.</summary>
     public static GameCodeException Game(Exception thrownByGame) => new(Unwrap(thrownByGame));
 
+    /// <summary><c>EXEC_FAILED {phase}</c>: loading (<c>load</c>), binding (<c>bind</c>) or running (<c>run</c>) an assembly the
+    /// client sent failed; the exception, if any, is described in <c>data</c>.</summary>
+    public static ProtocolException ExecFailed(string phase, string message, Exception? exception = null)
+    {
+        var data = Data(("phase", new JsonString(phase)));
+        if (exception is not null)
+        {
+            exception = Unwrap(exception);
+            data.Add("exceptionType", new JsonString(exception.GetType().FullName ?? exception.GetType().Name));
+            data.Add("exceptionMessage", new JsonString(exception.Message));
+            data.Add("stack", new JsonString(Trim(exception.StackTrace)));
+        }
+
+        return new ProtocolException(ErrorCodes.ExecFailed, message, data);
+    }
+
     /// <summary>Maps any exception to the error the client gets, logging agent defects in full.</summary>
     public static ProtocolError FromException(Exception exception, IAgentLogger log, string what)
     {

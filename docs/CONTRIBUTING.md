@@ -114,7 +114,7 @@ else the player has installed. These rules make that work.
   plugin ships besides its own is `UnityLudometry.Protocol.dll`, the shared protocol package, which has no
   dependencies. Check the `BepInEx5` project's output after changing references.
 - **Layering.** `Core` must not reference `UnityEngine*`, `BepInEx*` or any other loader (it may use
-  `UnityLudometry.Protocol`). `Api` and `UnityLudometry.Protocol` reference only the framework. Unity code goes in `Unity` or `Overlay`, loader code in the loader project.
+  `UnityLudometry.Protocol` and `Api`, whose context it implements). `Api` and `UnityLudometry.Protocol` reference only the framework. Unity code goes in `Unity` or `Overlay`, loader code in the loader project.
 - **Unity API baseline 2018.1.0.** `Unity` and `Overlay` compile against `UnityEngine.Modules` 2018.1.0, the oldest
   API surface that has everything the agent needs. Code compiled against it binds by name on newer players. Newer
   APIs must be reached through reflection and must degrade gracefully when missing.

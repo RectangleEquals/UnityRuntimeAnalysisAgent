@@ -3,6 +3,7 @@
 | Document | For |
 |---|---|
 | [Compatibility](compatibility.md) | What the agent is verified with, and known limitations |
+| [Scripting](scripting.md) | Running C# in the game: snippets, live Harmony patches, and hot-reloading a mod |
 | [Configuration](configuration.md) | The agent's settings: discovery, permission mode, transport, main-thread budget, jobs, events, logging |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Building, repository layout, how the core works, and the compatibility rules for contributors |
 

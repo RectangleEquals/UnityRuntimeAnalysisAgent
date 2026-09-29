@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using BepInEx;
 using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -55,6 +56,22 @@ public sealed class BepInEx5LoaderApi : ILoaderApi, IDisposable
 
     /// <inheritdoc />
     public IAgentLogger CreateLog(string source) => new SourceLogger(BepInEx.Logging.Logger.CreateLogSource(source));
+
+    /// <inheritdoc />
+    public object? FindPluginInstance(string guid) =>
+        Chainloader.PluginInfos.TryGetValue(guid, out var info) && info.Instance != null ? info.Instance : null;
+
+    /// <inheritdoc />
+    public LoaderPluginInfo? PluginMetadata(Type type)
+    {
+        if (!typeof(BaseUnityPlugin).IsAssignableFrom(type) || type.IsAbstract)
+        {
+            return null;
+        }
+
+        var metadata = MetadataHelper.GetMetadata(type);
+        return metadata is null ? null : new LoaderPluginInfo(metadata.GUID, metadata.Name, metadata.Version.ToString(), null);
+    }
 
     /// <inheritdoc />
     public object InstantiatePlugin(Type pluginType)

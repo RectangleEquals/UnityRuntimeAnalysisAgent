@@ -111,7 +111,7 @@ internal sealed class InstrumentationServices : IDisposable
 
         if (trigger is not null && trigger.Kind != "wait" && !_triggers.ContainsKey(trigger.Kind))
         {
-            throw DataErrors.Unsupported($"The trigger kind '{trigger.Kind}' isn't available in this agent (only invoke and wait).");
+            throw DataErrors.Unsupported($"The trigger kind '{trigger.Kind}' isn't available in this agent (available: {string.Join(", ", _triggers.Keys.Concat(new[] { "wait" }).OrderBy(k => k, StringComparer.Ordinal))}).");
         }
 
         var sink = new VerifySink(Records, Instrumenter);

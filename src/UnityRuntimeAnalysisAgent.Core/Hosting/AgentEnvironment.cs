@@ -14,7 +14,7 @@ public sealed class AgentEnvironment
     public string? GitCommit { get; set; } = BuildVersion().Commit;
 
     /// <summary>Version of the public Api that snippets and mods compile against (<c>major.minor</c>).</summary>
-    public string ApiVersion { get; set; } = "0.1";
+    public string ApiVersion { get; set; } = Api.ApiInfo.ApiVersion;
 
     /// <summary>Unity version of the player.</summary>
     public string UnityVersion { get; set; } = "unknown";

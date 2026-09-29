@@ -13,6 +13,7 @@ using UnityRuntimeAnalysisAgent.Core.Discovery;
 using UnityRuntimeAnalysisAgent.Core.Code;
 using UnityRuntimeAnalysisAgent.Core.Data;
 using UnityRuntimeAnalysisAgent.Core.Dispatch;
+using UnityRuntimeAnalysisAgent.Core.Execution;
 using UnityRuntimeAnalysisAgent.Core.Instrumentation;
 using UnityRuntimeAnalysisAgent.Core.Jobs;
 using UnityRuntimeAnalysisAgent.Core.Runtime;
@@ -98,6 +99,11 @@ public sealed class AgentHost : IDisposable
             _config.RemoveInstrumentationOnDisconnect, environment.AgentVersion, Warn);
         Dispatcher.Register(Instrumentation);
         RegisterCleanup("remove instrumentation", Instrumentation.Dispose);
+        Execution = new ExecutionServices(new ContextServices(Data, Pump, Events, Instrumentation.Instrumenter, Log), loader, Warn);
+        Dispatcher.Register(Execution);
+        Instrumentation.RegisterTrigger(Execution.Trigger);
+        RegisterCleanup("revert live patches", Execution.Dispose);
+        Events.EmittedKinds.Add(EventKinds.ExecEmit);
         foreach (var kind in new[] { EventKinds.HookHits, EventKinds.TraceRecords, EventKinds.WatchChanges, EventKinds.EventRaised, EventKinds.Exception, EventKinds.AgentWarning })
         {
             Events.EmittedKinds.Add(kind);
@@ -219,6 +225,9 @@ public sealed class AgentHost : IDisposable
 
     /// <summary>Instrumentation: hooks, traces, profiles, verification, watches, event subscriptions, exceptions.</summary>
     internal InstrumentationServices Instrumentation { get; }
+
+    /// <summary>Snippets, live patches and mod hot-reload.</summary>
+    internal ExecutionServices Execution { get; }
 
     // An agent.warning to subscribers, and the log.
     private void Warn(string code, string message, JsonObject data)
@@ -355,11 +364,10 @@ public sealed class AgentHost : IDisposable
                 },
                 Connections = ConnectionCount,
                 JobsRunning = Jobs.Running,
-                // Filled in by the components that own these as they arrive; none exist yet.
                 HooksActive = Instrumentation.Hooks.Count,
-                PatchesActive = Instrumentation.Instrumenter.PatchedMethods,
-                Handles = 0,
-                AssembliesLoadedByAgent = 0,
+                PatchesActive = Instrumentation.Instrumenter.PatchedMethods + Execution.Patches.PatchedMethods,
+                Handles = Data.Handles.Count,
+                AssembliesLoadedByAgent = Execution.Assemblies.Loaded,
             },
         };
     }

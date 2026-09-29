@@ -14,6 +14,8 @@
   <ItemGroup>
     <!-- The shared protocol (git submodule). UnityLudometry.Protocol.dll ships with the plugin; it has no dependencies. -->
     <ProjectReference Include="$(ProtocolProject)" />
+    <!-- The scripting API that snippets and live patches compile against; it ships with the plugin. -->
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Api\UnityRuntimeAnalysisAgent.Api.csproj" />
   </ItemGroup>
 
   <Target Name="CheckProtocolSubmodule" BeforeTargets="PrepareForBuild;CollectPackageReferences" Condition="!Exists('$(ProtocolProject)')">

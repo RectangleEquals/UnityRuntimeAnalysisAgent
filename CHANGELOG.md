@@ -64,3 +64,10 @@
   `instrumentation.status` / `instrumentation.clear`. A fault in instrumentation turns that instrumentation off with an
   `agent.warning` instead of affecting the game. Settings `Instrumentation.MaxMethods` and
   `Instrumentation.RemoveOnDisconnect`; `agent.info` reports hooks and patched methods.
+- Scripting, in Full mode only and audited with each assembly's name and SHA-256 ([scripting](docs/scripting.md)):
+  the scripting API (`UnityRuntimeAnalysisAgent.Api`: `IAgentContext` with arguments, variables, session state, log,
+  handles, waits, emitted events and hit counters; `AgentApi.Current` for live patches), snippets (`exec.run`, one frame
+  or several, with named sessions; `exec.sessions`, `exec.sessionClose`; `exec.emit` events), live Harmony patch sets
+  (`patch.apply`, `patch.revert`, `patch.list`, removed when the agent stops), the process's Harmony patches whoever owns
+  them (`patch.inspect`, `patches.all`), and mod hot-reload (`mod.reload`, `mod.unload`, `mod.list`). `hook.verify` can
+  use a snippet as its trigger. `agent.info` counts the assemblies the agent loaded and the live-patched methods.
