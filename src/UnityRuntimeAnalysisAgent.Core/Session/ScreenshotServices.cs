@@ -23,7 +23,11 @@ namespace UnityRuntimeAnalysisAgent.Core.Session;
 /// </summary>
 internal sealed class ScreenshotServices
 {
-    public const int MaxMarks = 99;
+    /// <summary>Marks per image, counted among the elements that can actually be seen.</summary>
+    public const int MaxMarks = 199;
+
+    // Enough candidates to fill MaxMarks after the invisible ones are left out.
+    private const int MarkCandidates = 5000;
     public const uint MarkColor = 0xFF2D95FF;
     public const uint HighlightColor = 0x2DB8FFFF;
     private const int WorkerTimeoutMs = 60_000;
@@ -200,32 +204,97 @@ internal sealed class ScreenshotServices
             }
         }
 
-        var number = 0;
+        // Boxes: the visible part of each element, inside the captured image; the cap counts only those.
+        var boxes = new List<(int X, int Y, int W, int H, UiElementFacts Element, long Handle)>();
         foreach (var (element, handle) in marks)
         {
-            var box = ToImage(element.ScreenRect.X, element.ScreenRect.Y, element.ScreenRect.W, element.ScreenRect.H);
-            if (box.W <= 0 || box.H <= 0 || box.X >= image.Width || box.Y >= image.Height || box.X + box.W <= 0 || box.Y + box.H <= 0)
+            var seen = element.VisibleRect ?? element.ScreenRect;
+            var box = ToImage(seen.X, seen.Y, seen.W, seen.H);
+            int x0 = Math.Max(0, box.X), y0 = Math.Max(0, box.Y), x1 = Math.Min(image.Width, box.X + box.W), y1 = Math.Min(image.Height, box.Y + box.H);
+            if (x1 - x0 < 2 || y1 - y0 < 2)
             {
                 continue; // outside the captured area
             }
 
-            number++;
-            ImageOps.DrawRect(image, box.X, box.Y, box.W, box.H, MarkColor);
-            // The number sits just above the box's corner (so it doesn't cover the element's text), or inside when there's no room.
-            const int labelHeight = 18;
-            ImageOps.DrawLabel(image, box.X, box.Y >= labelHeight ? box.Y - labelHeight : box.Y, number.ToString(CultureInfo.InvariantCulture), MarkColor, 0xFFFFFFFF);
+            boxes.Add((x0, y0, x1 - x0, y1 - y0, element, handle));
+            if (boxes.Count >= MaxMarks)
+            {
+                break;
+            }
+        }
+
+        // Lines and labels grow with the image, so they stay legible when it's large.
+        var stroke = Math.Max(2, (int)Math.Round(image.Width / 640.0));
+        foreach (var b in boxes)
+        {
+            ImageOps.DrawRect(image, b.X, b.Y, b.W, b.H, MarkColor, stroke);
+        }
+
+        var placed = new List<(int X, int Y, int W, int H)>();
+        for (var i = 0; i < boxes.Count; i++)
+        {
+            var b = boxes[i];
+            var label = (i + 1).ToString(CultureInfo.InvariantCulture);
+            var (lw, lh) = ImageOps.LabelSize(label, stroke);
+            var spot = LabelSpot(b, lw, lh, image.Width, image.Height, boxes, i, placed);
+            ImageOps.DrawLabel(image, spot.X, spot.Y, label, MarkColor, 0xFFFFFFFF, stroke);
+            placed.Add((spot.X, spot.Y, lw, lh));
             result.Add(new UiMark
             {
-                Mark = number,
-                H = handle,
-                Kind = element.Kind,
-                Text = element.Text,
-                Rect = new ScreenRect { X = box.X, Y = box.Y, W = box.W, H = box.H },
+                Mark = i + 1,
+                H = b.Handle,
+                Kind = b.Element.Kind,
+                Text = b.Element.Text,
+                Rect = new ScreenRect { X = b.X, Y = b.Y, W = b.W, H = b.H },
             });
         }
 
         return (image, result);
     }
+
+    // Where a mark's number goes: just outside its box (above, left, below, right) where it covers no other box and no
+    // other number; inside the box's corner only when there's no such place.
+    private static (int X, int Y) LabelSpot((int X, int Y, int W, int H, UiElementFacts Element, long Handle) box, int width, int height, int imageWidth, int imageHeight,
+        List<(int X, int Y, int W, int H, UiElementFacts Element, long Handle)> boxes, int self, List<(int X, int Y, int W, int H)> placed)
+    {
+        var candidates = new[]
+        {
+            (box.X, box.Y - height),
+            (box.X - width, box.Y),
+            (box.X, box.Y + box.H),
+            (box.X + box.W, box.Y),
+            (box.X + box.W - width, box.Y - height),
+            (box.X - width, box.Y + box.H - height),
+        };
+        foreach (var (x, y) in candidates)
+        {
+            if (x < 0 || y < 0 || x + width > imageWidth || y + height > imageHeight)
+            {
+                continue;
+            }
+
+            var clear = true;
+            for (var i = 0; i < boxes.Count && clear; i++)
+            {
+                clear = i == self || !Overlaps(x, y, width, height, boxes[i].X, boxes[i].Y, boxes[i].W, boxes[i].H);
+            }
+
+            foreach (var p in placed)
+            {
+                clear = clear && !Overlaps(x, y, width, height, p.X, p.Y, p.W, p.H);
+            }
+
+            if (clear)
+            {
+                return (x, y);
+            }
+        }
+
+        return (box.X, box.Y);
+    }
+
+    private static bool Overlaps(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh) =>
+        ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah;
 
     // Visible interactable elements, with handles and locators (main thread).
     private List<(UiElementFacts Element, long H)> UiMarks()
@@ -235,7 +304,7 @@ internal sealed class ScreenshotServices
             return new List<(UiElementFacts, long)>();
         }
 
-        return ui.Snapshot(onlyInteractable: true, onlyVisible: true, includeText: true, MaxMarks)
+        return ui.Snapshot(onlyInteractable: true, onlyVisible: true, includeText: true, MarkCandidates)
             .Select(e => (e, _data.Handles.Mint(e.GameObject))).ToList();
     }
 

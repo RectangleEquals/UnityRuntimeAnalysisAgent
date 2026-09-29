@@ -161,7 +161,16 @@ public sealed class UiElementFacts
     /// <summary>A dropdown's option texts.</summary>
     public List<string>? Options { get; set; }
 
+    /// <summary>Its rectangle on screen in pixels, origin top left.</summary>
     public (double X, double Y, double W, double H) ScreenRect { get; set; }
+
+    /// <summary>Whether any of it can be seen: active, not faded out by a CanvasGroup, and inside the screen and every
+    /// mask or scroll view it sits in.</summary>
+    public bool Visible { get; set; } = true;
+
+    /// <summary>The part that can be seen (clipped by the screen, masks and scroll views), when it differs from
+    /// <see cref="ScreenRect"/>; null means the whole rectangle (or nothing, when not <see cref="Visible"/>).</summary>
+    public (double X, double Y, double W, double H)? VisibleRect { get; set; }
 
     /// <summary>Its root canvas's name.</summary>
     public string Canvas { get; set; } = string.Empty;

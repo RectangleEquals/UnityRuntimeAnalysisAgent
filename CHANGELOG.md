@@ -87,3 +87,7 @@
   `screenshot.camera`). Metrics (`metrics.get`: frame times, fps, managed and Unity memory, collections, object counts,
   working set, private bytes, threads; `metrics.sample.start`: a time series to an NDJSON file). `agent.healthCheck`
   now also resolves an anchor, hooks and unhooks an agent-owned method, and checks the log.
+- UI visibility: an element counts as visible only if some of it is on screen, inside every mask and scroll view it
+  sits in, and not faded out by a CanvasGroup; `ui.snapshot`/`ui.find` with `onlyVisible` use that. `ui-marks` mark
+  only what can be seen (by its visible part), count their limit (now 199) after leaving out what can't, and place each
+  number beside its box where it covers no other mark, sized to the image. UI text no longer includes rich-text markup.

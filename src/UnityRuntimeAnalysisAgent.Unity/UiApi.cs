@@ -56,7 +56,7 @@ internal sealed class UiApi : IUiApi
                 }
 
                 var element = Describe(ui, tmp, go, canvas, includeText, onlyVisible);
-                if (element is null || (onlyInteractable && !element.Interactable) || (!includeText && element.Kind == "text"))
+                if (element is null || (onlyVisible && !element.Visible) || (onlyInteractable && !element.Interactable) || (!includeText && element.Kind == "text"))
                 {
                     continue;
                 }
@@ -225,11 +225,14 @@ internal sealed class UiApi : IUiApi
             SortingOrder = canvas.sortingOrder,
             ScreenRect = ScreenRect((RectTransform)go.transform, canvas),
         };
+        var visible = VisibleRect(ui, (RectTransform)go.transform, canvas, element.ScreenRect);
+        element.Visible = go.activeInHierarchy && visible is not null;
+        element.VisibleRect = visible is { } v && !v.Equals(element.ScreenRect) ? v : null;
 
         if (includeText)
         {
             var shown = text ?? (selectable is not null || scroll is not null ? go.GetComponentInChildren(ui.Text) ?? (tmp is null ? null : go.GetComponentInChildren(tmp.Text)) : null);
-            element.Text = shown is null ? null : shown.GetType().GetProperty("text", Instance)?.GetValue(shown, null) as string;
+            element.Text = StripRichText(shown is null ? null : shown.GetType().GetProperty("text", Instance)?.GetValue(shown, null) as string);
         }
 
         foreach (var component in (element.Kind == "image" ? new[] { image! } : go.GetComponentsInChildren(ui.Image).Concat(go.GetComponentsInChildren(ui.RawImage))).Take(MaxImages))
@@ -256,6 +259,55 @@ internal sealed class UiApi : IUiApi
 
         return element;
     }
+
+    private static readonly System.Text.RegularExpressions.Regex RichTextTag = new("<[^<>]{1,256}>", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    // Rich-text markup (<b>, <color=…>, TextMeshPro's <sprite …>) isn't what a reader sees; null when nothing is left.
+    private static string? StripRichText(string? text)
+    {
+        if (text is null)
+        {
+            return null;
+        }
+
+        var plain = RichTextTag.Replace(text, string.Empty).Trim();
+        return plain.Length == 0 ? null : plain;
+    }
+
+    // The part of an element that can be seen: inside the screen and every enabled RectMask2D/Mask above it (scroll views
+    // clip through those), and not faded out by a CanvasGroup (alpha 0). Null when nothing of it can be seen.
+    private static (double X, double Y, double W, double H)? VisibleRect(UguiBinder ui, RectTransform rect, Canvas canvas, (double X, double Y, double W, double H) full)
+    {
+        double x0 = Math.Max(0, full.X), y0 = Math.Max(0, full.Y), x1 = Math.Min(Screen.width, full.X + full.W), y1 = Math.Min(Screen.height, full.Y + full.H);
+        var groupsDone = false;
+        for (var t = rect.transform; t != null; t = t.parent)
+        {
+            // CanvasGroup became a Behaviour (with enabled) after 2018.1: a disabled one has no effect.
+            var group = groupsDone ? null : t.GetComponent<CanvasGroup>();
+            if (group != null && !((object)group is Behaviour { enabled: false }))
+            {
+                if (group.alpha <= 0.001f)
+                {
+                    return null;
+                }
+
+                groupsDone = group.ignoreParentGroups;
+            }
+
+            if (t != rect.transform && t is RectTransform clip && (Enabled(t.GetComponent(ui.RectMask2D)) || Enabled(t.GetComponent(ui.Mask))))
+            {
+                var r = ScreenRect(clip, canvas);
+                x0 = Math.Max(x0, r.X);
+                y0 = Math.Max(y0, r.Y);
+                x1 = Math.Min(x1, r.X + r.W);
+                y1 = Math.Min(y1, r.Y + r.H);
+            }
+        }
+
+        return x1 - x0 >= 1 && y1 - y0 >= 1 ? (x0, y0, x1 - x0, y1 - y0) : null;
+    }
+
+    private static bool Enabled(Component? component) => component is Behaviour behaviour && behaviour != null && behaviour.enabled;
 
     private static string KindOf(UguiBinder ui, TmpBinder? tmp, GameObject go) =>
         go.GetComponent(ui.Button) is not null ? "button"
@@ -395,6 +447,8 @@ internal sealed class UiApi : IUiApi
         public Type Text { get; private set; } = null!;
         public Type Image { get; private set; } = null!;
         public Type RawImage { get; private set; } = null!;
+        public Type RectMask2D { get; private set; } = null!;
+        public Type Mask { get; private set; } = null!;
         public Type EventSystem { get; private set; } = null!;
         public Type PointerEventData { get; private set; } = null!;
         public Type BaseEventData { get; private set; } = null!;
@@ -430,6 +484,8 @@ internal sealed class UiApi : IUiApi
             Text = RequireType(ui + "Text");
             Image = RequireType(ui + "Image");
             RawImage = RequireType(ui + "RawImage");
+            RectMask2D = RequireType(ui + "RectMask2D");
+            Mask = RequireType(ui + "Mask");
             EventSystem = RequireType(events + "EventSystem");
             PointerEventData = RequireType(events + "PointerEventData");
             BaseEventData = RequireType(events + "BaseEventData");

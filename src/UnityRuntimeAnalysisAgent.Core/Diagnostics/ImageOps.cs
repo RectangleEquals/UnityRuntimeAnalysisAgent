@@ -108,6 +108,9 @@ public static class ImageOps
         Fill(image, x + width - thickness, top, thickness, height, color);
     }
 
+    /// <summary>The size of a label drawn by <see cref="DrawLabel"/>.</summary>
+    public static (int Width, int Height) LabelSize(string text, int scale = 2) => ((text.Length * 6 * scale) - scale + 4, (7 * scale) + 4);
+
     /// <summary>A label: <paramref name="text"/> in a small bitmap font (letters, digits, a little punctuation) on a filled
     /// box whose top-left corner is at (<paramref name="x"/>, <paramref name="top"/>), kept inside the image. Returns the
     /// box size.</summary>
