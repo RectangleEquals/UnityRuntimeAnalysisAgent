@@ -180,7 +180,7 @@ public sealed class ContentApi : IContentApi
         Resources.LoadAll(path, type ?? typeof(Object)).Where(o => o != null).Cast<object>().ToList();
 
     /// <inheritdoc />
-    public ImagePixels? ReadPixels(object image)
+    public IImageReadback? BeginReadback(object image)
     {
         Texture? texture;
         UnityEngine.Rect area;
@@ -205,44 +205,17 @@ public sealed class ContentApi : IContentApi
 
         if (texture is Texture2D readable && Member(readable, "isReadable") is true && IsPlainFormat(readable.format))
         {
-            return Crop(readable.width, readable.GetPixels32(), area);
+            return new CpuReadback(readable, area);
         }
 
-        return SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null ? null : ReadBack(texture, area);
+        return SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null ? null : new GpuReadback(texture, area);
     }
 
     /// <inheritdoc />
     public byte[]? TextAssetBytes(object textAsset) => ((TextAsset)textAsset).bytes;
 
-    // The GPU path: copy into a temporary render target, then read that back into a readable RGBA32 texture.
-    private static ImagePixels ReadBack(Texture texture, UnityEngine.Rect area)
+    private static ImagePixels Crop(int sourceWidth, Color32[] pixels, int x, int y, int width, int height)
     {
-        var target = RenderTexture.GetTemporary(texture.width, texture.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
-        var previous = RenderTexture.active;
-        Texture2D? copy = null;
-        try
-        {
-            Graphics.Blit(texture, target);
-            RenderTexture.active = target;
-            copy = new Texture2D((int)area.width, (int)area.height, TextureFormat.RGBA32, false);
-            copy.ReadPixels(area, 0, 0);
-            copy.Apply();
-            return Crop(copy.width, copy.GetPixels32(), new UnityEngine.Rect(0, 0, copy.width, copy.height));
-        }
-        finally
-        {
-            RenderTexture.active = previous;
-            RenderTexture.ReleaseTemporary(target);
-            if (copy != null)
-            {
-                Object.DestroyImmediate(copy);
-            }
-        }
-    }
-
-    private static ImagePixels Crop(int sourceWidth, Color32[] pixels, UnityEngine.Rect area)
-    {
-        int x = (int)area.x, y = (int)area.y, width = (int)area.width, height = (int)area.height;
         var rgba = new byte[width * height * 4];
         for (var row = 0; row < height; row++)
         {
@@ -258,6 +231,90 @@ public sealed class ContentApi : IContentApi
         }
 
         return new ImagePixels(width, height, rgba);
+    }
+
+    // A readable texture: one native copy of its pixels in the frame; cropping and conversion happen on the worker.
+    private sealed class CpuReadback : IImageReadback
+    {
+        private readonly Texture2D _texture;
+        private readonly int _x;
+        private readonly int _y;
+        private Color32[]? _pixels;
+
+        public CpuReadback(Texture2D texture, UnityEngine.Rect area)
+        {
+            _texture = texture;
+            (_x, _y, Width, Height) = ((int)area.x, (int)area.y, (int)area.width, (int)area.height);
+        }
+
+        public int Width { get; }
+
+        public int Height { get; }
+
+        public bool Step()
+        {
+            _pixels = _texture.GetPixels32();
+            return true;
+        }
+
+        public ImagePixels Finish() => Crop(_texture.width, _pixels!, _x, _y, Width, Height);
+
+        public void Dispose() => _pixels = null;
+    }
+
+    // Any texture, with a GPU: one copy into a temporary render target, then strips of about a million pixels read back
+    // per step (a large texture spreads over several frames), copied as raw RGBA32 without a per-pixel loop.
+    private sealed class GpuReadback : IImageReadback
+    {
+        private const int PixelsPerStep = 1 << 20;
+        private readonly RenderTexture _target;
+        private readonly Texture2D _strip;
+        private readonly byte[] _rgba;
+        private readonly int _x;
+        private readonly int _y;
+        private readonly int _rowsPerStep;
+        private int _row;
+
+        public GpuReadback(Texture texture, UnityEngine.Rect area)
+        {
+            (_x, _y, Width, Height) = ((int)area.x, (int)area.y, (int)area.width, (int)area.height);
+            _rowsPerStep = Math.Max(1, Math.Min(Height, PixelsPerStep / Width));
+            _rgba = new byte[Width * Height * 4];
+            _target = RenderTexture.GetTemporary(texture.width, texture.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
+            Graphics.Blit(texture, _target);
+            _strip = new Texture2D(Width, _rowsPerStep, TextureFormat.RGBA32, false);
+        }
+
+        public int Width { get; }
+
+        public int Height { get; }
+
+        public bool Step()
+        {
+            var rows = Math.Min(_rowsPerStep, Height - _row);
+            var previous = RenderTexture.active;
+            try
+            {
+                RenderTexture.active = _target;
+                _strip.ReadPixels(new UnityEngine.Rect(_x, _y + _row, Width, rows), 0, 0, false);
+                Buffer.BlockCopy(_strip.GetRawTextureData(), 0, _rgba, _row * Width * 4, rows * Width * 4);
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+            }
+
+            _row += rows;
+            return _row >= Height;
+        }
+
+        public ImagePixels Finish() => new(Width, Height, _rgba);
+
+        public void Dispose()
+        {
+            RenderTexture.ReleaseTemporary(_target);
+            Object.DestroyImmediate(_strip);
+        }
     }
 
     // Formats GetPixels32 returns exactly; anything else (compressed, HDR) goes through the GPU and comes back as RGBA32.

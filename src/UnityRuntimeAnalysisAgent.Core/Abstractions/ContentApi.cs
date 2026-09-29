@@ -34,9 +34,9 @@ public interface IContentApi
     /// <summary><c>Resources.LoadAll(path, type)</c>.</summary>
     IReadOnlyList<object> ResourcesLoadAll(string path, Type? type);
 
-    /// <summary>The pixels of a texture, sprite (cropped to its rect) or render texture as RGBA32, rows bottom to top (read
-    /// back through the GPU, so unreadable textures work too), or null when the object has no pixels.</summary>
-    ImagePixels? ReadPixels(object image);
+    /// <summary>Starts reading the pixels of a texture, sprite (its rect) or render texture back (through the GPU for
+    /// unreadable textures), or returns null when the object has no pixels or they can't be read here.</summary>
+    IImageReadback? BeginReadback(object image);
 
     /// <summary>A <c>TextAsset</c>'s bytes.</summary>
     byte[]? TextAssetBytes(object textAsset);
@@ -155,6 +155,26 @@ public sealed class BundleFacts
 
     /// <summary>Its scene paths (scene bundles).</summary>
     public List<string>? ScenePaths { get; set; }
+}
+
+/// <summary>
+/// A readback in steps, so a large image doesn't stall a frame: <see cref="Step"/> reads the next piece (main thread,
+/// once per call), <see cref="Finish"/> assembles the pixels (any thread), <see cref="IDisposable.Dispose"/> releases the
+/// temporaries (main thread).
+/// </summary>
+public interface IImageReadback : IDisposable
+{
+    /// <summary>Width in pixels.</summary>
+    int Width { get; }
+
+    /// <summary>Height in pixels.</summary>
+    int Height { get; }
+
+    /// <summary>Reads the next piece; true once everything is read (main thread).</summary>
+    bool Step();
+
+    /// <summary>The pixels, after the last step (any thread: conversions happen here, not in a frame).</summary>
+    ImagePixels Finish();
 }
 
 /// <summary>Pixels as RGBA32, rows bottom to top (Unity's order).</summary>

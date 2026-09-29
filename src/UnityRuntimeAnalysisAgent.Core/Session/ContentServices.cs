@@ -337,8 +337,34 @@ internal sealed class ContentServices
             var source = queue.Dequeue();
             job.Progress("export", done++, done + queue.Count, source.Name);
 
-            // Main thread: read what the file needs (pixels, samples, geometry, bytes, JSON). Worker: encode and write.
+            // Main thread: read what the file needs (pixels in steps, bytes, JSON). Worker: convert, encode and write.
             var read = job.RunOnMain(() => ReadForExport(source));
+            if (read.Readback is { } readback)
+            {
+                try
+                {
+                    while (!job.RunOnMain(readback.Step))
+                    {
+                        job.Cancellation.ThrowIfCancellationRequested();
+                    }
+
+                    var pixels = readback.Finish();
+                    read = new ExportRead("png", ".png", () => PngEncoder.Encode(pixels));
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    read = ExportRead.Skip("IMAGE_NOT_READABLE", $"reading its pixels back failed: {e.Message}");
+                }
+                finally
+                {
+                    job.RunOnMain(() =>
+                    {
+                        readback.Dispose();
+                        return true;
+                    });
+                }
+            }
+
             if (read.Warning is not null)
             {
                 warnings.Add(new Warning { Code = read.Warning, Message = $"{source.Type.FullName} '{source.Name}': {read.Detail}" });
@@ -430,8 +456,8 @@ internal sealed class ContentServices
         switch (ContentRules.KindOf(source.Type))
         {
             case ContentKind.Image:
-                var pixels = Content.ReadPixels(source.Value);
-                return pixels is null ? ExportRead.Skip("IMAGE_NOT_READABLE", "its pixels couldn't be read back") : new ExportRead("png", ".png", () => PngEncoder.Encode(pixels));
+                var readback = Content.BeginReadback(source.Value);
+                return readback is null ? ExportRead.Skip("IMAGE_NOT_READABLE", "its pixels couldn't be read back") : ExportRead.Pixels(readback);
             case ContentKind.Text:
                 var bytes = Content.TextAssetBytes(source.Value) ?? Array.Empty<byte>();
                 var text = TextRules.LooksLikeText(bytes);
@@ -684,6 +710,10 @@ internal sealed class ContentServices
 
         public List<string> Notes { get; } = new();
 
+        public IImageReadback? Readback { get; private set; }
+
         public static ExportRead Skip(string warning, string detail) => new() { Warning = warning, Detail = detail };
+
+        public static ExportRead Pixels(IImageReadback readback) => new() { Readback = readback };
     }
 }

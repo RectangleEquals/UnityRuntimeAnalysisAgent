@@ -48,6 +48,6 @@
   Addressables (`addressables.info`, `addressables.keys`, `addressables.locate`, and `addressables.load` /
   `addressables.release` in `ReadOnly+Load`), AssetBundles (`bundles.loaded`, `bundles.load`), `Resources`
   (`resources.load`, `resources.loadAll`), and two jobs: `content.export.start` (PNG of the textures, sprites and render
-  textures in use, read back through the GPU when they aren't readable; JSON of objects' data; text assets' raw bytes;
+  textures in use, read back through the GPU when they aren't readable, in strips spread over frames; JSON of objects' data; text assets' raw bytes;
   with a manifest) and `content.scan.start` (an NDJSON inventory of loaded assets, Addressables keys and bundles).
 - `code.attributes` no longer fails on a method whose parameter types come from a missing assembly.
