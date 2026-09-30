@@ -2,7 +2,7 @@
 
 ## 0.1.0-dev (unreleased)
 - Repository and toolchain scaffolding: solution, projects, central package management.
-- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.5`).
+- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.6`).
 - Transport, handshake and discovery: framed connections over a named pipe (restricted to the current user where the
   runtime allows) or a loopback TCP fallback, the token-authenticated `hello` handshake, `ping`, `agent.info`,
   `agent.capabilities`, `cancel` and event subscriptions, and an atomically written discovery file.
@@ -154,6 +154,6 @@
   published as a GitHub release (`overlay-assets-r<N>`), locked by `assets/overlay/release.json`, and downloaded and
   verified by the build when missing. `tools/OverlayAssets` rebuilds and releases them
   ([README](tools/OverlayAssets/README.md)).
-- Release builds no longer depend on where the repository is checked out (source paths are mapped to a fixed root),
-  and generated JSON is written with the same line endings as a checkout. The package becomes byte-identical across
-  checkouts once the protocol package builds the same way (its assembly still embeds its checkout path).
+- The package is byte-identical from any checkout: Release builds map source paths to a fixed root (here and in the
+  protocol package, now `protocol-v0.1.0-dev.6`), and generated JSON is written with the same line endings as a
+  checkout.
