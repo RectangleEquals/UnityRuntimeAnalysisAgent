@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
-    <!-- Paths inside the assemblies (symbols, caller file names) don't depend on where the repository is checked out, so
-         any checkout builds byte-identical assemblies. -->
-    <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))=/_/</PathMap>
+    <!-- Release builds don't depend on where the repository is checked out (source paths are mapped to /_/), so every
+         checkout builds byte-identical assemblies. Debug builds keep real paths for debugging. -->
+    <ContinuousIntegrationBuild Condition="'$(Configuration)' == 'Release'">true</ContinuousIntegrationBuild>
     <!-- Shipped assemblies spell out their usings; tool projects enable implicit usings themselves. -->
     <ImplicitUsings>disable</ImplicitUsings>
     <Authors>RectangleEquals</Authors>
