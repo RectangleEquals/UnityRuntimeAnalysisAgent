@@ -29,6 +29,8 @@ internal sealed class ScreenshotServices
     // Enough candidates to fill MaxMarks after the invisible ones are left out.
     private const int MarkCandidates = 5000;
     public const uint MarkColor = 0xFF2D95FF;
+    public const uint DisabledMarkColor = 0x8C8C8CFF;
+    public const uint HoverMarkColor = 0xFFB020FF;
     public const uint HighlightColor = 0x2DB8FFFF;
     private const int WorkerTimeoutMs = 60_000;
 
@@ -227,7 +229,7 @@ internal sealed class ScreenshotServices
         var stroke = Math.Max(2, (int)Math.Round(image.Width / 640.0));
         foreach (var b in boxes)
         {
-            ImageOps.DrawRect(image, b.X, b.Y, b.W, b.H, MarkColor, stroke);
+            ImageOps.DrawRect(image, b.X, b.Y, b.W, b.H, ColorOf(b.Element), stroke);
         }
 
         var placed = new List<(int X, int Y, int W, int H)>();
@@ -237,7 +239,7 @@ internal sealed class ScreenshotServices
             var label = (i + 1).ToString(CultureInfo.InvariantCulture);
             var (lw, lh) = ImageOps.LabelSize(label, stroke);
             var spot = LabelSpot(b, lw, lh, image.Width, image.Height, boxes, i, placed);
-            ImageOps.DrawLabel(image, spot.X, spot.Y, label, MarkColor, 0xFFFFFFFF, stroke);
+            ImageOps.DrawLabel(image, spot.X, spot.Y, label, ColorOf(b.Element), b.Element.Interaction == "hover" ? 0x000000FFu : 0xFFFFFFFFu, stroke);
             placed.Add((spot.X, spot.Y, lw, lh));
             result.Add(new UiMark
             {
@@ -245,12 +247,22 @@ internal sealed class ScreenshotServices
                 H = b.Handle,
                 Kind = b.Element.Kind,
                 Text = b.Element.Text,
+                Interaction = b.Element.Interaction,
+                Images = b.Element.Images.Count > 0 ? b.Element.Images.Select(im => new UiImage { Sprite = im.Sprite, Texture = im.Texture }).ToList() : null,
                 Rect = new ScreenRect { X = b.X, Y = b.Y, W = b.W, H = b.H },
             });
         }
 
         return (image, result);
     }
+
+    // Clickable elements in the mark colour; disabled ones grey; hover-only ones (tooltips) amber.
+    private static uint ColorOf(UiElementFacts element) => element.Interaction switch
+    {
+        "disabled" => DisabledMarkColor,
+        "hover" => HoverMarkColor,
+        _ => MarkColor,
+    };
 
     // Where a mark's number goes: just outside its box (above, left, below, right) where it covers no other box and no
     // other number; inside the box's corner only when there's no such place.
@@ -296,7 +308,7 @@ internal sealed class ScreenshotServices
     private static bool Overlaps(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh) =>
         ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah;
 
-    // Visible interactable elements, with handles and locators (main thread).
+    // Visible elements something reacts to (clickable first, then disabled, then hover-only), with handles (main thread).
     private List<(UiElementFacts Element, long H)> UiMarks()
     {
         if (_unity.Ui is not { UguiStatus.Available: true } ui)
@@ -304,7 +316,9 @@ internal sealed class ScreenshotServices
             return new List<(UiElementFacts, long)>();
         }
 
-        return ui.Snapshot(onlyInteractable: true, onlyVisible: true, includeText: true, MarkCandidates)
+        return ui.Snapshot(onlyInteractable: false, onlyVisible: true, includeText: true, MarkCandidates)
+            .Where(e => e.Interaction != "display" && !e.DrawnToTexture) // a texture's pixels aren't the screen's
+            .OrderBy(e => e.Interaction switch { "clickable" => 0, "disabled" => 1, _ => 2 })
             .Select(e => (e, _data.Handles.Mint(e.GameObject))).ToList();
     }
 

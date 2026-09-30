@@ -25,7 +25,14 @@ internal sealed class UiApi : IUiApi
     private const BindingFlags Instance = BindingFlags.Public | BindingFlags.Instance;
     private const BindingFlags Static = BindingFlags.Public | BindingFlags.Static;
 
+    private static readonly Type? ImguiType = Type.GetType("UnityEngine.GUI, UnityEngine.IMGUIModule") ?? Type.GetType("UnityEngine.GUI, UnityEngine");
+    private static readonly Dictionary<Type, bool> OnGuiCache = new();
+    private static readonly Dictionary<int, Camera?> CameraByLayer = new();
+    private static Camera[]? _cameras;
+    private static int _camerasFrame = -1;
+
     private readonly UguiBinder _ugui = new();
+    private readonly UiToolkitProbe _uiToolkit = new();
     private readonly TmpBinder _tmp = new();
 
     public ModuleStatus UguiStatus => Status(_ugui);
@@ -37,6 +44,10 @@ internal sealed class UiApi : IUiApi
         var ui = Ugui();
         var tmp = _tmp.EnsureBound() ? _tmp : null;
         var items = new List<UiElementFacts>();
+        // A screen opened this frame hasn't been laid out yet (Unity does that just before rendering): lay out now, as
+        // the next frame will be drawn.
+        Canvas.ForceUpdateCanvases();
+        var system = ui.CurrentEventSystem();
         var canvases = UnityEngine.Object.FindObjectsOfType<Canvas>()
             .Where(c => c.isRootCanvas && !IsAgentOwned(c.gameObject))
             .OrderByDescending(c => c.sortingOrder).ThenBy(c => c.name, StringComparer.Ordinal);
@@ -55,7 +66,7 @@ internal sealed class UiApi : IUiApi
                     continue;
                 }
 
-                var element = Describe(ui, tmp, go, canvas, includeText, onlyVisible);
+                var element = Describe(ui, tmp, go, canvas, includeText, onlyVisible, system);
                 if (element is null || (onlyVisible && !element.Visible) || (onlyInteractable && !element.Interactable) || (!includeText && element.Kind == "text"))
                 {
                     continue;
@@ -66,6 +77,134 @@ internal sealed class UiApi : IUiApi
         }
 
         return items;
+    }
+
+    public UiElementFacts? Describe(object target)
+    {
+        var ui = Ugui();
+        var go = GameObjectOf(target);
+        var canvas = go.GetComponentInParent<Canvas>();
+        Canvas.ForceUpdateCanvases();
+        return canvas == null || !(go.transform is RectTransform) ? null
+            : Describe(ui, _tmp.EnsureBound() ? _tmp : null, go, canvas.rootCanvas, includeText: true, onlyVisible: false, ui.CurrentEventSystem());
+    }
+
+    public UiActionOutcome Hover(object target, bool leave)
+    {
+        var ui = Ugui();
+        var go = GameObjectOf(target);
+        var system = ui.CurrentEventSystem();
+        if (system is null)
+        {
+            return new UiActionOutcome(false, "none");
+        }
+
+        var pointer = Activator.CreateInstance(ui.PointerEventData, system)!;
+        ui.PointerPosition.SetValue(pointer, Center(go), null);
+        ui.PointerEventData.GetProperty("pointerEnter", Instance)?.SetValue(pointer, leave ? null : go, null);
+        var handled = leave
+            ? ui.ExecuteHierarchy(go, pointer, "pointerExitHandler", ui.PointerExit)
+            : ui.ExecuteHierarchy(go, pointer, "pointerEnterHandler", ui.PointerEnter);
+        return new UiActionOutcome(handled is not null, "eventSystem");
+    }
+
+    public UiScrollOutcome ScrollTo(object target)
+    {
+        var ui = Ugui();
+        var rect = GameObjectOf(target).transform as RectTransform ?? throw new ArgumentException("The target isn't a UI element.");
+        object? innermost = null;
+        var scrolled = false;
+        for (var t = rect.parent; t != null; t = t.parent)
+        {
+            if (t.GetComponent(ui.ScrollRect) is not { } scroll)
+            {
+                continue;
+            }
+
+            innermost ??= t.gameObject;
+            var content = ui.ScrollRect.GetProperty("content", Instance)!.GetValue(scroll, null) as RectTransform;
+            var viewport = (ui.ScrollRect.GetProperty("viewport", Instance)?.GetValue(scroll, null) as RectTransform) ?? (RectTransform)t;
+            if (content == null || content.parent == null)
+            {
+                continue;
+            }
+
+            // How far the element sticks out of the viewport, in the viewport's space; the content moves back by that much.
+            var inner = Bounds(viewport, rect);
+            var window = viewport.rect;
+            var horizontal = (bool)ui.ScrollRect.GetProperty("horizontal", Instance)!.GetValue(scroll, null);
+            var vertical = (bool)ui.ScrollRect.GetProperty("vertical", Instance)!.GetValue(scroll, null);
+            var delta = new Vector2(
+                !horizontal ? 0 : inner.xMin < window.xMin ? inner.xMin - window.xMin : inner.xMax > window.xMax ? Math.Min(inner.xMax - window.xMax, inner.xMin - window.xMin) : 0,
+                !vertical ? 0 : inner.yMax > window.yMax ? inner.yMax - window.yMax : inner.yMin < window.yMin ? Math.Max(inner.yMin - window.yMin, inner.yMax - window.yMax) : 0);
+            if (delta.sqrMagnitude < 0.01f)
+            {
+                continue;
+            }
+
+            ui.ScrollRect.GetMethod("StopMovement", Instance)?.Invoke(scroll, null);
+            content.localPosition -= content.parent.InverseTransformVector(viewport.TransformVector(delta));
+            Canvas.ForceUpdateCanvases();
+            scrolled = true;
+        }
+
+        return new UiScrollOutcome(scrolled, innermost);
+    }
+
+    public UiNavigateOutcome Navigate(string direction)
+    {
+        var ui = Ugui();
+        var system = ui.CurrentEventSystem();
+        var before = Selected(ui, system);
+        if (system is null || before is null)
+        {
+            return new UiNavigateOutcome(false, before);
+        }
+
+        var move = direction switch
+        {
+            "left" => 0,
+            "up" => 1,
+            "right" => 2,
+            "down" => 3,
+            _ => throw new ArgumentException("direction must be up, down, left or right."),
+        };
+        var data = Activator.CreateInstance(ui.AxisEventData, system)!;
+        ui.AxisEventData.GetProperty("moveDir", Instance)!.SetValue(data, Enum.ToObject(ui.MoveDirection, move), null);
+        ui.Execute(before, data, "moveHandler", ui.MoveHandler);
+        var after = Selected(ui, system);
+        return new UiNavigateOutcome(after != before, after);
+    }
+
+    public UiFrameworksFacts Frameworks()
+    {
+        var facts = new UiFrameworksFacts { Ugui = UguiStatus, Tmp = TmpStatus };
+        if (_ugui.EnsureBound())
+        {
+            foreach (var canvas in UnityEngine.Object.FindObjectsOfType<Canvas>().Where(c => c.isRootCanvas && c.isActiveAndEnabled && !IsAgentOwned(c.gameObject)))
+            {
+                var (overlay, camera, world) = facts.Canvases;
+                facts.Canvases = canvas.renderMode switch
+                {
+                    RenderMode.ScreenSpaceOverlay => (overlay + 1, camera, world),
+                    RenderMode.ScreenSpaceCamera => (overlay, camera + 1, world),
+                    _ => (overlay, camera, world + 1),
+                };
+            }
+
+            if (_ugui.CurrentEventSystem() is { } system)
+            {
+                facts.EventSystemPresent = true;
+                facts.InputModule = (_ugui.EventSystem.GetProperty("currentInputModule", Instance)?.GetValue(system, null) as Component)?.GetType().FullName;
+            }
+        }
+
+        _uiToolkit.Read(facts, IsAgentOwned);
+        facts.ImguiAvailable = ImguiType is not null;
+        facts.ImguiBehaviours = ImguiType is null ? 0 : UnityEngine.Object.FindObjectsOfType<MonoBehaviour>()
+            .Count(b => b.isActiveAndEnabled && HasOnGui(b.GetType()) && !IsAgentOwned(b.gameObject) && !IsAgentAssembly(b.GetType().Assembly));
+        InputReport(facts);
+        return facts;
     }
 
     public bool IsAgentOwned(object gameObjectOrComponent)
@@ -201,38 +340,60 @@ internal sealed class UiApi : IUiApi
         return new UiActionOutcome(handled, "eventSystem");
     }
 
-    private UiElementFacts? Describe(UguiBinder ui, TmpBinder? tmp, GameObject go, Canvas canvas, bool includeText, bool onlyVisible)
+    private UiElementFacts? Describe(UguiBinder ui, TmpBinder? tmp, GameObject go, Canvas canvas, bool includeText, bool onlyVisible, object? system)
     {
         var selectable = go.GetComponent(ui.Selectable);
         var scroll = go.GetComponent(ui.ScrollRect);
         var text = go.GetComponent(ui.Text) ?? (tmp is null ? null : go.GetComponent(tmp.Text));
         var image = go.GetComponent(ui.Image) ?? go.GetComponent(ui.RawImage);
-        if (selectable is null && scroll is null && text is null && image is null)
+        var (clicks, hovers) = Handlers(ui, go);
+        if (selectable is null && scroll is null && text is null && image is null && !clicks && !hovers)
         {
             return null;
         }
 
-        if (onlyVisible && selectable is null && scroll is null && (text ?? image) is Behaviour { enabled: false })
+        if (onlyVisible && selectable is null && scroll is null && !clicks && !hovers && (text ?? image) is Behaviour { enabled: false })
         {
             return null;
         }
 
         var element = new UiElementFacts(go)
         {
-            Kind = selectable is not null ? KindOf(ui, tmp, go) : scroll is not null ? "scrollRect" : text is not null ? "text" : "image",
-            Interactable = selectable is not null && (bool)ui.Selectable.GetMethod("IsInteractable", Instance)!.Invoke(selectable, null),
+            Kind = selectable is not null ? KindOf(ui, tmp, go) : scroll is not null ? "scrollRect" : text is not null ? "text" : image is not null ? "image" : "other",
             Canvas = canvas.name,
             SortingOrder = canvas.sortingOrder,
             ScreenRect = ScreenRect((RectTransform)go.transform, canvas),
+            DrawnToTexture = DrawnToTexture(canvas) is not null,
         };
-        var visible = VisibleRect(ui, (RectTransform)go.transform, canvas, element.ScreenRect);
-        element.Visible = go.activeInHierarchy && visible is not null;
-        element.VisibleRect = visible is { } v && !v.Equals(element.ScreenRect) ? v : null;
+        (element.Visibility, element.VisibleRect) = go.activeInHierarchy ? Visibility(ui, (RectTransform)go.transform, canvas, element.ScreenRect) : ("hidden", null);
+
+        // How it can be used: a Selectable says so itself; other handlers work unless a CanvasGroup switches them off.
+        if (selectable is not null)
+        {
+            element.Interactable = (bool)ui.Selectable.GetMethod("IsInteractable", Instance)!.Invoke(selectable, null);
+            element.Interaction = element.Interactable ? "clickable" : "disabled";
+            element.Navigation = Navigation(ui, selectable);
+        }
+        else if (clicks || scroll is not null)
+        {
+            element.Interactable = GroupsAllow(go);
+            element.Interaction = element.Interactable ? "clickable" : "disabled";
+        }
+        else if (hovers)
+        {
+            element.Interaction = GroupsAllow(go) ? "hover" : "disabled";
+        }
+
+        element.ScrollContainer = ScrollContainer(ui, go);
+        element.Selected = system is not null && Selected(ui, system) == go;
 
         if (includeText)
         {
-            var shown = text ?? (selectable is not null || scroll is not null ? go.GetComponentInChildren(ui.Text) ?? (tmp is null ? null : go.GetComponentInChildren(tmp.Text)) : null);
-            element.Text = StripRichText(shown is null ? null : shown.GetType().GetProperty("text", Instance)?.GetValue(shown, null) as string);
+            // Controls show a child's text (a button's label); a scroll view's children are its content, not its label.
+            var shown = text ?? (selectable is not null || ((clicks || hovers) && scroll is null) ? go.GetComponentInChildren(ui.Text) ?? (tmp is null ? null : go.GetComponentInChildren(tmp.Text)) : null);
+            var raw = shown is null ? null : shown.GetType().GetProperty("text", Instance)?.GetValue(shown, null) as string;
+            element.Text = StripRichText(raw);
+            element.RawText = raw is not null && RichTextTag.IsMatch(raw) ? raw : null;
         }
 
         foreach (var component in (element.Kind == "image" ? new[] { image! } : go.GetComponentsInChildren(ui.Image).Concat(go.GetComponentsInChildren(ui.RawImage))).Take(MaxImages))
@@ -251,13 +412,101 @@ internal sealed class UiApi : IUiApi
         if (includeText && element.Kind == "inputField" && element.Value is string { Length: > 0 } typed)
         {
             element.Text = typed; // what the field shows; its first text child is the placeholder
+            element.RawText = null;
         }
-        if (element.Interactable && ui.CurrentEventSystem() is { } system)
+
+        if (element.Interactable && system is not null && element.Visible && !element.DrawnToTexture)
         {
             element.RaycastBlocked = Blocked(ui, system, go);
         }
 
         return element;
+    }
+
+    // Which pointer handlers the GameObject's own components implement: click-like ones (click, down, up, submit, drag,
+    // drop, scroll) and hover-only ones (enter, exit).
+    private static (bool Clicks, bool Hovers) Handlers(UguiBinder ui, GameObject go)
+    {
+        bool clicks = false, hovers = false;
+        foreach (var component in go.GetComponents<MonoBehaviour>())
+        {
+            if (component == null || !component.enabled)
+            {
+                continue;
+            }
+
+            var type = component.GetType();
+            clicks |= ui.ClickHandlers.Any(h => h.IsAssignableFrom(type));
+            hovers |= ui.HoverHandlers.Any(h => h.IsAssignableFrom(type));
+        }
+
+        return (clicks, hovers);
+    }
+
+    // CanvasGroups up the hierarchy (until one ignores its parents) must be interactable and block raycasts.
+    private static bool GroupsAllow(GameObject go)
+    {
+        for (var t = go.transform; t != null; t = t.parent)
+        {
+            var group = t.GetComponent<CanvasGroup>();
+            if (group == null || ((object)group is Behaviour { enabled: false }))
+            {
+                continue;
+            }
+
+            if (!group.interactable || !group.blocksRaycasts)
+            {
+                return false;
+            }
+
+            if (group.ignoreParentGroups)
+            {
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    private static object? ScrollContainer(UguiBinder ui, GameObject go)
+    {
+        for (var t = go.transform.parent; t != null; t = t.parent)
+        {
+            if (t.GetComponent(ui.ScrollRect) is not null)
+            {
+                return t.gameObject;
+            }
+        }
+
+        return null;
+    }
+
+    private static UiNavigationFacts? Navigation(UguiBinder ui, Component selectable)
+    {
+        var navigation = ui.Selectable.GetProperty("navigation", Instance)?.GetValue(selectable, null);
+        var mode = navigation?.GetType().GetProperty("mode", Instance)?.GetValue(navigation, null)?.ToString() ?? "None";
+        GameObject? Find(string method) =>
+            (ui.Selectable.GetMethod(method, Instance, null, Type.EmptyTypes, null)?.Invoke(selectable, null) as Component) is { } found && found != null ? found.gameObject : null;
+        return new UiNavigationFacts
+        {
+            Mode = mode.Length == 0 ? "none" : char.ToLowerInvariant(mode[0]) + mode.Substring(1),
+            Up = Find("FindSelectableOnUp"),
+            Down = Find("FindSelectableOnDown"),
+            Left = Find("FindSelectableOnLeft"),
+            Right = Find("FindSelectableOnRight"),
+        };
+    }
+
+    private static GameObject? Selected(UguiBinder ui, object? system) =>
+        system is not null && ui.EventSystem.GetProperty("currentSelectedGameObject", Instance)!.GetValue(system, null) is GameObject selected && selected != null ? selected : null;
+
+    // The element's rectangle in another RectTransform's local space.
+    private static Rect Bounds(RectTransform space, RectTransform rect)
+    {
+        var corners = new Vector3[4];
+        rect.GetWorldCorners(corners);
+        var local = corners.Select(c => (Vector2)space.InverseTransformPoint(c)).ToList();
+        return Rect.MinMaxRect(local.Min(p => p.x), local.Min(p => p.y), local.Max(p => p.x), local.Max(p => p.y));
     }
 
     private static readonly System.Text.RegularExpressions.Regex RichTextTag = new("<[^<>]{1,256}>", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
@@ -274,11 +523,22 @@ internal sealed class UiApi : IUiApi
         return plain.Length == 0 ? null : plain;
     }
 
-    // The part of an element that can be seen: inside the screen and every enabled RectMask2D/Mask above it (scroll views
-    // clip through those), and not faded out by a CanvasGroup (alpha 0). Null when nothing of it can be seen.
-    private static (double X, double Y, double W, double H)? VisibleRect(UguiBinder ui, RectTransform rect, Canvas canvas, (double X, double Y, double W, double H) full)
+    // How much of an element can be seen: the screen and every enabled RectMask2D/Mask above it (scroll views clip
+    // through those) cut it; a CanvasGroup at alpha 0 hides it. Returns the visibility and the visible part.
+    private static (string Visibility, (double X, double Y, double W, double H)? Rect) Visibility(UguiBinder ui, RectTransform rect, Canvas canvas, (double X, double Y, double W, double H) full)
     {
-        double x0 = Math.Max(0, full.X), y0 = Math.Max(0, full.Y), x1 = Math.Min(Screen.width, full.X + full.W), y1 = Math.Min(Screen.height, full.Y + full.H);
+        if (full.W < 1 || full.H < 1)
+        {
+            return ("hidden", null);
+        }
+
+        var (width, height) = SurfaceSize(canvas);
+        double x0 = Math.Max(0, full.X), y0 = Math.Max(0, full.Y), x1 = Math.Min(width, full.X + full.W), y1 = Math.Min(height, full.Y + full.H);
+        if (x1 - x0 < 1 || y1 - y0 < 1)
+        {
+            return ("offscreen", null);
+        }
+
         var groupsDone = false;
         for (var t = rect.transform; t != null; t = t.parent)
         {
@@ -288,7 +548,7 @@ internal sealed class UiApi : IUiApi
             {
                 if (group.alpha <= 0.001f)
                 {
-                    return null;
+                    return ("hidden", null);
                 }
 
                 groupsDone = group.ignoreParentGroups;
@@ -304,7 +564,13 @@ internal sealed class UiApi : IUiApi
             }
         }
 
-        return x1 - x0 >= 1 && y1 - y0 >= 1 ? (x0, y0, x1 - x0, y1 - y0) : null;
+        if (x1 - x0 < 1 || y1 - y0 < 1)
+        {
+            return ("clipped", null);
+        }
+
+        var whole = x1 - x0 >= full.W - 1 && y1 - y0 >= full.H - 1;
+        return (whole ? "visible" : "partial", (x0, y0, x1 - x0, y1 - y0));
     }
 
     private static bool Enabled(Component? component) => component is Behaviour behaviour && behaviour != null && behaviour.enabled;
@@ -378,17 +644,66 @@ internal sealed class UiApi : IUiApi
         var corners = new Vector3[4];
         rect.GetWorldCorners(corners);
         var centre = (corners[0] + corners[2]) / 2f;
-        return canvas.rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? (Vector2)centre : RectTransformUtility.WorldToScreenPoint(canvas.rootCanvas.worldCamera, centre);
+        var camera = CameraOf(canvas.rootCanvas);
+        return camera == null ? (Vector2)centre : RectTransformUtility.WorldToScreenPoint(camera, centre);
     }
+
+    // The camera a canvas is drawn through: the one set on it; none for overlay canvases (and camera-space ones without a
+    // camera, which Unity draws as overlays). A world-space canvas without one is drawn by every camera that sees its
+    // layer: the main camera when it does, else the deepest enabled one, else a disabled one drawing into a texture (games
+    // render those by hand). Worked out once per frame.
+    private static Camera? CameraOf(Canvas canvas)
+    {
+        canvas = canvas.rootCanvas;
+        if (canvas.worldCamera != null || canvas.renderMode != RenderMode.WorldSpace)
+        {
+            return canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+        }
+
+        if (_camerasFrame != Time.frameCount)
+        {
+            _camerasFrame = Time.frameCount;
+            _cameras = null;
+            CameraByLayer.Clear();
+        }
+
+        var layer = canvas.gameObject.layer;
+        if (!CameraByLayer.TryGetValue(layer, out var camera))
+        {
+            var main = Camera.main;
+            _cameras ??= UnityEngine.Object.FindObjectsOfType<Camera>().OrderByDescending(c => c.enabled).ThenByDescending(c => c.depth).ToArray();
+            camera = main != null && Sees(main, layer) ? main
+                : _cameras.FirstOrDefault(c => c.enabled && Sees(c, layer)) ?? _cameras.FirstOrDefault(c => c.targetTexture != null && Sees(c, layer)) ?? main;
+            CameraByLayer[layer] = camera;
+        }
+
+        return camera;
+    }
+
+    private static bool Sees(Camera camera, int layer) => (camera.cullingMask & (1 << layer)) != 0;
+
 
     internal static (double X, double Y, double W, double H) ScreenRect(RectTransform rect, Canvas canvas)
     {
         var corners = new Vector3[4];
         rect.GetWorldCorners(corners);
-        var points = corners.Select(c => canvas.renderMode == RenderMode.ScreenSpaceOverlay ? (Vector2)c : RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, c)).ToList();
+        var camera = CameraOf(canvas);
+        if (camera != null && corners.Any(c => camera.WorldToScreenPoint(c).z <= 0))
+        {
+            return (-1_000_000, -1_000_000, 1, 1); // behind the camera: nowhere on screen
+        }
+
+        var points = corners.Select(c => camera == null ? (Vector2)c : RectTransformUtility.WorldToScreenPoint(camera, c)).ToList();
         double minX = points.Min(p => p.x), maxX = points.Max(p => p.x), minY = points.Min(p => p.y), maxY = points.Max(p => p.y);
-        return (minX, Screen.height - maxY, maxX - minX, maxY - minY);
+        return (minX, SurfaceSize(canvas).Height - maxY, maxX - minX, maxY - minY);
     }
+
+    // What a canvas is drawn onto: the screen, or the render texture its camera draws into (UI shown on an in-world
+    // screen or a post-processed surface). Rectangles and visibility are measured in that surface's pixels.
+    private static (int Width, int Height) SurfaceSize(Canvas canvas) =>
+        DrawnToTexture(canvas) is { } texture ? (texture.width, texture.height) : (Screen.width, Screen.height);
+
+    private static RenderTexture? DrawnToTexture(Canvas canvas) => CameraOf(canvas.rootCanvas) is { } camera && camera.targetTexture != null ? camera.targetTexture : null;
 
     private static double Number(object? value, string message) => value switch
     {
@@ -455,6 +770,12 @@ internal sealed class UiApi : IUiApi
         public Type RaycastResult { get; private set; } = null!;
         public PropertyInfo PointerPosition { get; private set; } = null!;
         public Type PointerEnter { get; private set; } = null!;
+        public Type PointerExit { get; private set; } = null!;
+        public Type MoveHandler { get; private set; } = null!;
+        public Type AxisEventData { get; private set; } = null!;
+        public Type MoveDirection { get; private set; } = null!;
+        public Type[] ClickHandlers { get; private set; } = Array.Empty<Type>();
+        public Type[] HoverHandlers { get; private set; } = Array.Empty<Type>();
         public Type PointerDown { get; private set; } = null!;
         public Type PointerUp { get; private set; } = null!;
         public Type PointerClick { get; private set; } = null!;
@@ -491,17 +812,24 @@ internal sealed class UiApi : IUiApi
             BaseEventData = RequireType(events + "BaseEventData");
             RaycastResult = RequireType(events + "RaycastResult");
             PointerEnter = RequireType(events + "IPointerEnterHandler");
+            PointerExit = RequireType(events + "IPointerExitHandler");
+            MoveHandler = RequireType(events + "IMoveHandler");
+            AxisEventData = RequireType(events + "AxisEventData");
+            MoveDirection = RequireType(events + "MoveDirection");
+            HoverHandlers = new[] { PointerEnter, PointerExit };
             PointerDown = RequireType(events + "IPointerDownHandler");
             PointerUp = RequireType(events + "IPointerUpHandler");
             PointerClick = RequireType(events + "IPointerClickHandler");
             SubmitHandler = RequireType(events + "ISubmitHandler");
+            ClickHandlers = new[] { "IPointerClickHandler", "IPointerDownHandler", "IPointerUpHandler", "ISubmitHandler", "IBeginDragHandler", "IDragHandler", "IDropHandler", "IScrollHandler" }
+                .Select(n => RequireType(events + n)).ToArray();
             CancelHandler = RequireType(events + "ICancelHandler");
             PointerPosition = PointerEventData.GetProperty("position", Instance) ?? throw new ModuleUnavailableException("PointerEventData.position is missing.");
             _current = EventSystem.GetProperty("current", Static) ?? throw new ModuleUnavailableException("EventSystem.current is missing.");
             var executeEvents = RequireType(events + "ExecuteEvents");
             _execute = Generic(executeEvents, "Execute");
             _executeHierarchy = Generic(executeEvents, "ExecuteHierarchy");
-            Version = Selectable.Assembly.GetName().Version?.ToString();
+            Version = Known(Selectable.Assembly.GetName().Version);
         }
 
         private static MethodInfo Generic(Type type, string name) =>
@@ -530,9 +858,118 @@ internal sealed class UiApi : IUiApi
             Text = RequireType("TMPro.TMP_Text");
             InputField = RequireType("TMPro.TMP_InputField");
             Dropdown = RequireType("TMPro.TMP_Dropdown");
-            Version = Text.Assembly.GetName().Version?.ToString();
+            Version = Known(Text.Assembly.GetName().Version);
         }
     }
+
+    private static bool HasOnGui(Type type)
+    {
+        lock (OnGuiCache)
+        {
+            if (!OnGuiCache.TryGetValue(type, out var has))
+            {
+                has = type.GetMethod("OnGUI", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null) is not null;
+                OnGuiCache[type] = has;
+            }
+
+            return has;
+        }
+    }
+
+    private static bool IsAgentAssembly(Assembly assembly) => assembly.GetName().Name?.StartsWith("UnityRuntimeAnalysisAgent", StringComparison.Ordinal) ?? false;
+
+    // UnityEngine.Input by reflection (D-001): it moved from CoreModule to InputLegacyModule in 2019.1.
+    private static readonly Type? LegacyInput = Type.GetType("UnityEngine.Input, UnityEngine.InputLegacyModule")
+        ?? Type.GetType("UnityEngine.Input, UnityEngine.CoreModule") ?? Type.GetType("UnityEngine.Input, UnityEngine");
+
+    // Input: the Input Manager answers unless the project switched it off (then it throws); the Input System package
+    // answers when it's loaded.
+    private static void InputReport(UiFrameworksFacts facts)
+    {
+        var legacy = false;
+        if (LegacyInput?.GetProperty("mousePosition", BindingFlags.Public | BindingFlags.Static) is { } mousePosition)
+        {
+            try
+            {
+                mousePosition.GetValue(null, null);
+                legacy = true;
+            }
+            catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException)
+            {
+                // The project uses only the Input System package.
+            }
+        }
+
+        var inputSystem = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "Unity.InputSystem");
+        var gamepad = inputSystem?.GetType("UnityEngine.InputSystem.Gamepad", throwOnError: false);
+        facts.InputSystemVersion = inputSystem?.GetName().Version?.ToString();
+        facts.InputHandling = (legacy, inputSystem is not null) switch
+        {
+            (true, true) => "both",
+            (false, true) => "inputSystem",
+            (true, false) => "inputManager",
+            _ => "unknown",
+        };
+        if (gamepad?.GetProperty("all", BindingFlags.Public | BindingFlags.Static)?.GetValue(null, null) is ICollection all)
+        {
+            facts.Gamepads = all.Count;
+        }
+        else if (legacy && LegacyInput!.GetMethod("GetJoystickNames", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null) is string[] names)
+        {
+            facts.Gamepads = names.Count(n => !string.IsNullOrEmpty(n));
+        }
+    }
+
+    /// <summary>Runtime UI Toolkit (UIDocument, Unity 2021.2+), by reflection: which documents are active, on which panels.</summary>
+    private sealed class UiToolkitProbe : ModuleBinder
+    {
+        public UiToolkitProbe()
+            : base("uiToolkit")
+        {
+        }
+
+        private Type Document { get; set; } = null!;
+
+        public void Read(UiFrameworksFacts facts, Func<object, bool> agentOwned)
+        {
+            // The module can be there without runtime UI (UIDocument arrived in 2021.2): available is the module, runtime
+            // support is UIDocument.
+            var runtime = EnsureBound();
+            var module = AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name == "UnityEngine.UIElementsModule");
+            facts.UiToolkit = new ModuleStatus(module, module ? Application.unityVersion : null,
+                !module ? "UnityEngine.UIElementsModule isn't loaded." : runtime ? null : "This Unity version has no runtime UI Toolkit (UIDocument).");
+            facts.UiToolkitRuntime = runtime;
+            if (!runtime)
+            {
+                return;
+            }
+
+            var panels = new Dictionary<string, (double Sort, int Documents)>(StringComparer.Ordinal);
+            foreach (var document in UnityEngine.Object.FindObjectsOfType(Document).OfType<Behaviour>().Where(d => d.isActiveAndEnabled && !agentOwned(d.gameObject)))
+            {
+                facts.UiDocuments++;
+                var settings = Document.GetProperty("panelSettings", Instance)?.GetValue(document, null) as UnityEngine.Object;
+                var name = settings != null ? settings.name : "(none)";
+                var sort = settings != null && settings.GetType().GetProperty("sortingOrder", Instance)?.GetValue(settings, null) is float order ? order : 0;
+                panels[name] = (sort, panels.TryGetValue(name, out var seen) ? seen.Documents + 1 : 1);
+            }
+
+            foreach (var panel in panels.OrderBy(p => p.Value.Sort).ThenBy(p => p.Key, StringComparer.Ordinal))
+            {
+                facts.Panels.Add((panel.Key, panel.Value.Sort, panel.Value.Documents));
+            }
+        }
+
+        protected override void Bind()
+        {
+            TryLoad("UnityEngine.UIElementsModule");
+            Document = RequireType("UnityEngine.UIElements.UIDocument");
+            Version = Application.unityVersion;
+        }
+    }
+
+    // Package assemblies are often versioned 0.0.0.0 (which says nothing).
+    private static string? Known(Version? version) => version is null || version == new Version(0, 0, 0, 0) ? null : version.ToString();
 
     // A game's UI assembly may not be loaded yet when the agent binds; it's in the game's Managed folder if the game uses it.
     private static void TryLoad(string assembly)

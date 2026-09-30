@@ -146,14 +146,34 @@ public sealed class UiElementFacts
     /// <c>image</c> or <c>other</c>.</summary>
     public string Kind { get; set; } = "other";
 
-    /// <summary>Its text (its own, or its first child text for controls).</summary>
+    /// <summary>Its text (its own, or its first child text for controls), rich-text markup removed.</summary>
     public string? Text { get; set; }
+
+    /// <summary>The text with its rich-text markup, when it had any (else null).</summary>
+    public string? RawText { get; set; }
 
     /// <summary>Sprite and texture names of the element's images (its own and its children's).</summary>
     public List<(string? Sprite, string? Texture)> Images { get; } = new();
 
-    /// <summary><c>Selectable.IsInteractable()</c> (false for elements that aren't selectable).</summary>
+    /// <summary>Whether it can be used now: an interactable Selectable, or another element whose pointer handlers can be
+    /// reached (<see cref="Interaction"/> is <c>clickable</c>).</summary>
     public bool Interactable { get; set; }
+
+    /// <summary><c>clickable</c>, <c>disabled</c>, <c>hover</c> (only pointer enter/exit handlers) or <c>display</c>.</summary>
+    public string Interaction { get; set; } = "display";
+
+    /// <summary><c>visible</c>, <c>partial</c>, <c>clipped</c> (hidden by a mask or scroll view), <c>offscreen</c> or
+    /// <c>hidden</c> (inactive, faded out by a CanvasGroup, or without size).</summary>
+    public string Visibility { get; set; } = "visible";
+
+    /// <summary>The enclosing ScrollRect's GameObject, or null.</summary>
+    public object? ScrollContainer { get; set; }
+
+    /// <summary>Whether it's the EventSystem's selected object.</summary>
+    public bool Selected { get; set; }
+
+    /// <summary>Keyboard/gamepad navigation of a Selectable (null for other elements).</summary>
+    public UiNavigationFacts? Navigation { get; set; }
 
     /// <summary>A toggle's state.</summary>
     public bool? IsOn { get; set; }
@@ -167,13 +187,21 @@ public sealed class UiElementFacts
     /// <summary>Its rectangle on screen in pixels, origin top left.</summary>
     public (double X, double Y, double W, double H) ScreenRect { get; set; }
 
-    /// <summary>Whether any of it can be seen: active, not faded out by a CanvasGroup, and inside the screen and every
-    /// mask or scroll view it sits in.</summary>
-    public bool Visible { get; set; } = true;
+    /// <summary>Whether any of it can be seen (<see cref="Visibility"/> is <c>visible</c> or <c>partial</c>). Setting it
+    /// sets <see cref="Visibility"/> to <c>visible</c> or <c>offscreen</c>.</summary>
+    public bool Visible
+    {
+        get => Visibility is "visible" or "partial";
+        set => Visibility = value ? "visible" : "offscreen";
+    }
 
-    /// <summary>The part that can be seen (clipped by the screen, masks and scroll views), when it differs from
-    /// <see cref="ScreenRect"/>; null means the whole rectangle (or nothing, when not <see cref="Visible"/>).</summary>
+    /// <summary>The part that can be seen (clipped by the screen, masks and scroll views); null when nothing can be seen,
+    /// or when it wasn't measured (then the whole <see cref="ScreenRect"/> counts).</summary>
     public (double X, double Y, double W, double H)? VisibleRect { get; set; }
+
+    /// <summary>Its canvas is drawn into a render texture (shown on an in-world screen or a processed surface):
+    /// <see cref="ScreenRect"/> and <see cref="VisibleRect"/> are in that texture's pixels, not the screen's.</summary>
+    public bool DrawnToTexture { get; set; }
 
     /// <summary>Its root canvas's name.</summary>
     public string Canvas { get; set; } = string.Empty;
@@ -183,6 +211,93 @@ public sealed class UiElementFacts
 
     /// <summary>Whether something else is hit first at its centre (it can't be clicked).</summary>
     public bool RaycastBlocked { get; set; }
+}
+
+/// <summary>A Selectable's navigation: its mode and the GameObjects it moves to (null where it goes nowhere).</summary>
+public sealed class UiNavigationFacts
+{
+    /// <summary><c>none</c>, <c>horizontal</c>, <c>vertical</c>, <c>automatic</c> or <c>explicit</c>.</summary>
+    public string Mode { get; set; } = "none";
+
+    public object? Up { get; set; }
+
+    public object? Down { get; set; }
+
+    public object? Left { get; set; }
+
+    public object? Right { get; set; }
+}
+
+/// <summary>What <c>ui.scrollTo</c> did.</summary>
+public readonly struct UiScrollOutcome
+{
+    /// <summary>Creates it.</summary>
+    public UiScrollOutcome(bool scrolled, object? container)
+    {
+        Scrolled = scrolled;
+        Container = container;
+    }
+
+    /// <summary>Whether any scroll view moved.</summary>
+    public bool Scrolled { get; }
+
+    /// <summary>The innermost scroll view's GameObject, or null when the element isn't in one.</summary>
+    public object? Container { get; }
+}
+
+/// <summary>What <c>ui.navigate</c> did.</summary>
+public readonly struct UiNavigateOutcome
+{
+    /// <summary>Creates it.</summary>
+    public UiNavigateOutcome(bool moved, object? selected)
+    {
+        Moved = moved;
+        Selected = selected;
+    }
+
+    /// <summary>Whether the selection changed.</summary>
+    public bool Moved { get; }
+
+    /// <summary>The selected GameObject afterwards, or null.</summary>
+    public object? Selected { get; }
+}
+
+/// <summary>The UI frameworks and input handling of the running game (<c>ui.frameworks</c>).</summary>
+public sealed class UiFrameworksFacts
+{
+    public ModuleStatus Ugui { get; set; } = new(false, null, null);
+
+    /// <summary>Active root canvases by render mode.</summary>
+    public (int Overlay, int Camera, int World) Canvases { get; set; }
+
+    public bool EventSystemPresent { get; set; }
+
+    /// <summary>The active input module's type name.</summary>
+    public string? InputModule { get; set; }
+
+    public ModuleStatus UiToolkit { get; set; } = new(false, null, null);
+
+    /// <summary>Runtime UI Toolkit (UIDocument) exists in this Unity version.</summary>
+    public bool UiToolkitRuntime { get; set; }
+
+    public int UiDocuments { get; set; }
+
+    /// <summary>Panels in use: the PanelSettings asset's name, its sort order, and the active documents on it.</summary>
+    public List<(string Name, double SortOrder, int Documents)> Panels { get; } = new();
+
+    public ModuleStatus Tmp { get; set; } = new(false, null, null);
+
+    public bool ImguiAvailable { get; set; }
+
+    /// <summary>Active behaviours of the game with an <c>OnGUI</c> method (the agent's own excluded).</summary>
+    public int ImguiBehaviours { get; set; }
+
+    /// <summary><c>inputManager</c>, <c>inputSystem</c>, <c>both</c> or <c>unknown</c>.</summary>
+    public string InputHandling { get; set; } = "unknown";
+
+    public string? InputSystemVersion { get; set; }
+
+    public int Gamepads { get; set; }
 }
 
 /// <summary>What a UI action did: whether something handled it, and how (<c>eventSystem</c>, <c>onClick</c>, <c>setter</c>, …).</summary>
@@ -246,4 +361,19 @@ public interface IUiApi
 
     /// <summary>Selects an object in the EventSystem.</summary>
     UiActionOutcome Select(object target);
+
+    /// <summary>One element, described as <see cref="Snapshot"/> would (null if it isn't a UI element).</summary>
+    UiElementFacts? Describe(object target);
+
+    /// <summary>Pointer enter (or, with <paramref name="leave"/>, exit) through the EventSystem.</summary>
+    UiActionOutcome Hover(object target, bool leave);
+
+    /// <summary>Scrolls the target's scroll views (innermost first) until it is visible.</summary>
+    UiScrollOutcome ScrollTo(object target);
+
+    /// <summary>A navigation move (<c>up</c>, <c>down</c>, <c>left</c>, <c>right</c>) from the selected object.</summary>
+    UiNavigateOutcome Navigate(string direction);
+
+    /// <summary>The UI frameworks the game can use and uses, and its input handling. Works without uGUI.</summary>
+    UiFrameworksFacts Frameworks();
 }

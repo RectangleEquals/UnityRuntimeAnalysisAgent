@@ -13,7 +13,9 @@ namespace UnityRuntimeAnalysisAgent.Unity;
 /// Core's view of Unity. The pump host is a hidden <c>DontDestroyOnLoad</c> object whose behaviour calls the pump every
 /// frame and at the end of every frame. Unity objects can only be created on the main thread, so a recreation requested
 /// from another thread (the watchdog) happens at the next main-thread opportunity: the loader's own update
-/// (<see cref="OnLoaderUpdate"/>) or the next scene load.
+/// (<see cref="OnLoaderUpdate"/>), the next scene load, or Unity's own per-frame callbacks (before rendering, before
+/// canvases render), which don't depend on any object: a game that destroys every object, the loader's included,
+/// still gets its pump host back within a frame.
 /// </summary>
 public sealed class UnityApi : IUnityApi
 {
@@ -37,6 +39,17 @@ public sealed class UnityApi : IUnityApi
         SceneManager.sceneUnloaded += scene => Guard(() => OnSceneUnloaded(scene));
         SceneManager.activeSceneChanged += (previous, next) => Guard(() => OnActiveSceneChanged(previous, next));
         Application.logMessageReceivedThreaded += OnLogMessage;
+        Application.onBeforeRender += OnEngineFrame;
+        Canvas.willRenderCanvases += OnEngineFrame;
+    }
+
+    // Main thread, every frame: only acts when the pump host is gone or a change was asked for.
+    private void OnEngineFrame()
+    {
+        if (_destroyRequested || _recreateRequested || (!_alive && _tick is not null))
+        {
+            OnLoaderUpdate();
+        }
     }
 
     /// <inheritdoc />

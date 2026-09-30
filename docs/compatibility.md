@@ -52,6 +52,14 @@ IL2CPP games aren't supported in this version.
 - **Only uGUI and TextMeshPro can be driven.** `ui.*` works with Unity's uGUI (and TextMeshPro) on active canvases.
   UI Toolkit and IMGUI (`OnGUI`) screens aren't listed or clickable; reach them through the game's own methods
   (`obj.invoke`) instead. There is no low-level input injection.
+- **UI drawn into a render texture isn't placed on the screen.** Some games draw their UI with a camera into a texture
+  and show that on an in-world screen or a processed surface. Such elements are listed and can be driven (actions go
+  through the EventSystem by object, not by position), but their rectangles and visibility are measured in the texture's
+  pixels, and screenshots don't mark them.
+- **Games that bundle their own Harmony can clash with BepInEx 5.** A game shipping its own `0Harmony.dll` and MonoMod
+  in its `Managed` folder (for its own mod support) may find BepInEx's copies loaded first; its own patches can then fail
+  with a `MissingMethodException` and the game may stop while starting. Check the game's player log if it quits right
+  after launch with the agent installed.
 - **Pausing uses the time scale.** `time.pause` and `time.step` set `Time.timeScale`, so gameplay driven by unscaled
   time or a game's own clock keeps going.
 - **Rules' overlay parts wait for the overlay.** The `prompt` and `pick` conditions never occur and the `notify` and

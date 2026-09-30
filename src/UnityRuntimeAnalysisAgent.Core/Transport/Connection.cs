@@ -245,6 +245,7 @@ public sealed class Connection : IDisposable
             return;
         }
 
+        _log.Info($"Connection {Id} closed: {reason}{(error is null ? string.Empty : $" ({error.GetType().Name}: {error.Message})")}.");
         lock (_outbound)
         {
             _outboundCompleted = true;

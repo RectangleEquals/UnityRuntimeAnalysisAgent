@@ -2,7 +2,7 @@
 
 ## 0.1.0-dev (unreleased)
 - Repository and toolchain scaffolding: solution, projects, central package management.
-- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.4`).
+- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.5`).
 - Transport, handshake and discovery: framed connections over a named pipe (restricted to the current user where the
   runtime allows) or a loopback TCP fallback, the token-authenticated `hello` handshake, `ping`, `agent.info`,
   `agent.capabilities`, `cancel` and event subscriptions, and an atomically written discovery file.
@@ -117,4 +117,20 @@
   the agent's own methods; statuses `ok`, `partial`, `failed`, `needs_trigger` (armed until gameplay happens, cancelled
   or timed out) and `stale`; evidence as locators with short excerpts.
 - `locator.resolve` now resolves asset locators (`live://asset/<Type>/<name>#<instanceId>`) while the game runs.
+- The complete UI model (protocol `0.1.0-dev.5`): every element reports its `visibility` (visible, partial, clipped by a
+  mask or scroll view, off screen, hidden) with the visible part, its `interaction` (clickable, disabled, hover-only,
+  display), its scroll container, whether it's selected, its keyboard/gamepad `navigation` and its text with markup
+  (`rawText`); elements with only pointer handlers are listed too. `ui.snapshot` pages with a cursor instead of a cap and
+  filters by interaction (as does `ui.find`), and lays out a screen opened in the same frame before reading it. New
+  actions: `ui.hover` (pointer enter/exit, e.g. to reveal tooltips), `ui.scrollTo` (scroll views move until the element
+  is visible) and `ui.navigate` (a move from the selected element). `ui-marks` also mark disabled elements (grey) and
+  hover-only ones (amber), and every mark carries its interaction and images. `ui.frameworks` reports which UI
+  frameworks the game can use and uses (uGUI canvases and EventSystem, UI Toolkit documents and panels, TextMeshPro,
+  IMGUI behaviours), its input handling (Input Manager, Input System, gamepads) and a classification per framework.
+- The agent keeps running when a game destroys BepInEx's manager object while loading (some games destroy every
+  object); it stops only when the game quits, and its main-thread host comes back within a frame through Unity's own
+  per-frame callbacks. Connections log why they closed.
+- World-space UI without an assigned camera is placed through the camera that draws its layer (the main camera when it
+  does), so UI a game draws into a texture is measured in that texture; world-space UI behind the camera counts as off
+  screen. Camera-space canvases without a camera are placed like overlays, as Unity draws them.
 

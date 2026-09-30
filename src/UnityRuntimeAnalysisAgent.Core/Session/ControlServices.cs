@@ -24,6 +24,9 @@ internal sealed class ControlServices
 {
     public const int DefaultUiLimit = 500;
 
+    /// <summary>Elements read for one snapshot at most (paged out from there).</summary>
+    public const int MaxUiElements = 100_000;
+
     private readonly DataModel _data;
     private readonly MainThreadPump _pump;
     private readonly IUnityApi _unity;
@@ -222,13 +225,36 @@ internal sealed class ControlServices
 
     // ---- UI ----------------------------------------------------------------------------------------------------------------
 
+    /// <summary>A page of the UI: the elements are read once (on the first page) and paged from that read, so a page never
+    /// skips or repeats elements because the UI changed in between.</summary>
     [RpcMethod(Methods.UiSnapshot)]
-    public ProtocolMessage UiSnapshot(RequestContext context, UiSnapshotParams p) => new UiSnapshotResult
+    public ProtocolMessage UiSnapshot(RequestContext context, UiSnapshotParams p)
     {
-        Items = Snapshot(p.OnlyInteractable ?? false, p.OnlyVisible ?? true, p.IncludeText ?? true, (int)Math.Max(1, Math.Min(p.Limit ?? DefaultUiLimit, 10_000))),
-        Frame = Frame,
-        RealtimeMs = RealtimeMs,
-    };
+        UiPage page;
+        if (p.Cursor is { } cursor)
+        {
+            page = _data.Cursors.Take<UiPage>(cursor, "params.cursor");
+        }
+        else
+        {
+            var interactions = Interactions(p.Interaction, "params.interaction");
+            var all = Ui.Snapshot(p.OnlyInteractable ?? false, p.OnlyVisible ?? true, p.IncludeText ?? true, MaxUiElements)
+                .Where(e => interactions is null || interactions.Contains(e.Interaction)).ToList();
+            page = new UiPage(all, 0);
+        }
+
+        var limit = (int)Math.Max(1, Math.Min(p.Limit ?? DefaultUiLimit, 10_000));
+        var items = page.Elements.Skip(page.Offset).Take(limit).ToList();
+        var next = page.Offset + items.Count;
+        return new UiSnapshotResult
+        {
+            Items = items.Select(Element).ToList(),
+            Cursor = next < page.Elements.Count ? _data.Cursors.Mint(page with { Offset = next }) : null,
+            Total = page.Elements.Count,
+            Frame = Frame,
+            RealtimeMs = RealtimeMs,
+        };
+    }
 
     [RpcMethod(Methods.UiFind)]
     public ProtocolMessage UiFind(RequestContext context, UiFindParams p)
@@ -246,10 +272,12 @@ internal sealed class ControlServices
             }
         }
 
-        var items = Snapshot(false, true, true, 10_000).Where(e =>
+        var interactions = Interactions(p.Interaction, "params.interaction");
+        var items = Ui.Snapshot(false, true, true, MaxUiElements).Select(Element).Where(e =>
             (text is null || (e.Text is not null && text.IsMatch(e.Text)))
             && (p.Path is null || e.Path == p.Path || e.Path.EndsWith("/" + p.Path, StringComparison.Ordinal))
-            && (p.Kind is null || e.Kind == p.Kind)).ToList();
+            && (p.Kind is null || e.Kind == p.Kind)
+            && (interactions is null || interactions.Contains(e.Interaction))).ToList();
         return new UiFindResult { Items = items };
     }
 
@@ -296,6 +324,111 @@ internal sealed class ControlServices
         return new UiSelectResult { Handled = handled, Via = via, Frame = Frame, RealtimeMs = RealtimeMs };
     }
 
+    [RpcMethod(Methods.UiHover)]
+    public ProtocolMessage UiHover(RequestContext context, UiHoverParams p)
+    {
+        var (handled, via) = Act(context, p.Target, target => Ui.Hover(target, p.Leave ?? false));
+        return new UiHoverResult { Handled = handled, Via = via, Frame = Frame, RealtimeMs = RealtimeMs };
+    }
+
+    [RpcMethod(Methods.UiScrollTo)]
+    public ProtocolMessage UiScrollTo(RequestContext context, UiScrollToParams p)
+    {
+        UiScrollOutcome outcome = default;
+        object? element = null;
+        Act(context, p.Target, target =>
+        {
+            element = target;
+            outcome = Ui.ScrollTo(target);
+            return new UiActionOutcome(outcome.Scrolled, "scrollRect");
+        });
+        return new UiScrollToResult
+        {
+            Scrolled = outcome.Scrolled,
+            Container = outcome.Container is { } container ? _data.Handles.Mint(container) : null,
+            Visibility = (element is null ? null : Ui.Describe(element))?.Visibility ?? "hidden",
+            Frame = Frame,
+            RealtimeMs = RealtimeMs,
+        };
+    }
+
+    [RpcMethod(Methods.UiNavigate)]
+    public ProtocolMessage UiNavigate(RequestContext context, UiNavigateParams p)
+    {
+        if (p.Direction is not ("up" or "down" or "left" or "right"))
+        {
+            throw ProtocolException.InvalidParams("params.direction", "params.direction must be up, down, left or right.");
+        }
+
+        var outcome = Ui.Navigate(p.Direction);
+        if (outcome.Selected is { } selected)
+        {
+            context.Target = _data.Targets.LocatorBaseOf(selected);
+        }
+
+        return new UiNavigateResult
+        {
+            Moved = outcome.Moved,
+            Selected = outcome.Selected is { } now ? _data.Handles.Mint(now) : null,
+            Frame = Frame,
+            RealtimeMs = RealtimeMs,
+        };
+    }
+
+    /// <summary>The UI frameworks the game can use and uses, classified from what is active now.</summary>
+    [RpcMethod(Methods.UiFrameworks)]
+    public ProtocolMessage UiFrameworks(RequestContext context)
+    {
+        if (_unity.Ui is not { } ui)
+        {
+            throw new ProtocolException(ErrorCodes.MainThreadUnavailable, "There is no Unity main thread (no game).");
+        }
+
+        var f = ui.Frameworks();
+        var canvases = f.Canvases.Overlay + f.Canvases.Camera + f.Canvases.World;
+        // The framework with the most active surfaces is primary (ties: uGUI, UI Toolkit, IMGUI); the others in use are
+        // secondary; available but idle is unused.
+        var active = new (string Name, bool Available, int Count)[]
+        {
+            ("ugui", f.Ugui.Available, canvases),
+            ("uiToolkit", f.UiToolkitRuntime, f.UiDocuments),
+            ("imgui", f.ImguiAvailable, f.ImguiBehaviours),
+        };
+        var primary = active.Where(a => a.Available && a.Count > 0).OrderByDescending(a => a.Count).Select(a => a.Name).FirstOrDefault();
+        string Classify(string name)
+        {
+            var (_, available, count) = active.Single(a => a.Name == name);
+            return !available ? "unavailable" : count == 0 ? "unused" : name == primary ? "primary" : "secondary";
+        }
+
+        return new UiFrameworksResult
+        {
+            Ugui = new UguiReport
+            {
+                Available = f.Ugui.Available,
+                Version = f.Ugui.Version,
+                Reason = f.Ugui.Reason,
+                Canvases = new CanvasCounts { Overlay = f.Canvases.Overlay, Camera = f.Canvases.Camera, World = f.Canvases.World },
+                EventSystem = new EventSystemReport { Present = f.EventSystemPresent, InputModule = f.InputModule },
+            },
+            UiToolkit = new UiToolkitReport
+            {
+                Available = f.UiToolkit.Available,
+                RuntimeSupported = f.UiToolkitRuntime,
+                Version = f.UiToolkit.Version,
+                Reason = f.UiToolkit.Reason,
+                Documents = f.UiDocuments,
+                Panels = f.Panels.Select(x => new UiToolkitPanel { Name = x.Name, SortOrder = x.SortOrder, Documents = x.Documents }).ToList(),
+            },
+            Tmp = new TmpReport { Available = f.Tmp.Available, Version = f.Tmp.Version },
+            Imgui = new ImguiReport { Available = f.ImguiAvailable, Behaviours = f.ImguiBehaviours },
+            Input = new InputReport { Handling = f.InputHandling, InputSystemVersion = f.InputSystemVersion, Gamepads = f.Gamepads },
+            Classification = new UiFrameworkClassification { Ugui = Classify("ugui"), UiToolkit = Classify("uiToolkit"), Imgui = Classify("imgui") },
+            Frame = Frame,
+            RealtimeMs = RealtimeMs,
+        };
+    }
+
     // ---- application -------------------------------------------------------------------------------------------------------
 
     [RpcMethod(Methods.AppInfo)]
@@ -337,31 +470,56 @@ internal sealed class ControlServices
 
     // ---- helpers -----------------------------------------------------------------------------------------------------------
 
-    private List<UiElement> Snapshot(bool onlyInteractable, bool onlyVisible, bool includeText, int limit) =>
-        Ui.Snapshot(onlyInteractable, onlyVisible, includeText, limit).Select(e => new UiElement
+    private UiElement Element(UiElementFacts e) => new()
+    {
+        H = _data.Handles.Mint(e.GameObject),
+        Path = _unity.Locate(e.GameObject) is { } at ? at.Path : string.Empty,
+        Kind = e.Kind,
+        Text = e.Text,
+        RawText = e.RawText,
+        Images = e.Images.Count > 0 ? e.Images.Select(i => new UiImage { Sprite = i.Sprite, Texture = i.Texture }).ToList() : null,
+        Interactable = e.Interactable,
+        Interaction = e.Interaction,
+        Visibility = e.Visibility,
+        VisibleRect = e.Visible ? Rect(e.VisibleRect ?? e.ScreenRect) : null,
+        ScrollContainer = e.ScrollContainer is { } container ? _data.Handles.Mint(container) : null,
+        Selected = e.Selected,
+        Navigation = e.Navigation is { } n ? new UiNavigation { Mode = n.Mode, Up = Mint(n.Up), Down = Mint(n.Down), Left = Mint(n.Left), Right = Mint(n.Right) } : null,
+        IsOn = e.IsOn,
+        Value = e.Value switch
         {
-            H = _data.Handles.Mint(e.GameObject),
-            Path = _unity.Locate(e.GameObject) is { } at ? at.Path : string.Empty,
-            Kind = e.Kind,
-            Text = e.Text,
-            Images = e.Images.Count > 0 ? e.Images.Select(i => new UiImage { Sprite = i.Sprite, Texture = i.Texture }).ToList() : null,
-            Interactable = e.Interactable,
-            IsOn = e.IsOn,
-            Value = e.Value switch
-            {
-                null => null,
-                string s => new JsonString(s),
-                int i => new JsonNumber((long)i),
-                double d => new JsonNumber(d),
-                _ => null,
-            },
-            Options = e.Options,
-            ScreenRect = new ScreenRect { X = Math.Round(e.ScreenRect.X, 1), Y = Math.Round(e.ScreenRect.Y, 1), W = Math.Round(e.ScreenRect.W, 1), H = Math.Round(e.ScreenRect.H, 1) },
-            Canvas = e.Canvas,
-            SortingOrder = e.SortingOrder,
-            RaycastBlocked = e.RaycastBlocked,
-            Locator = _data.Targets.LocatorBaseOf(e.GameObject),
-        }).ToList();
+            null => null,
+            string s => new JsonString(s),
+            int i => new JsonNumber((long)i),
+            double d => new JsonNumber(d),
+            _ => null,
+        },
+        Options = e.Options,
+        ScreenRect = Rect(e.ScreenRect),
+        Canvas = e.Canvas,
+        SortingOrder = e.SortingOrder,
+        RaycastBlocked = e.RaycastBlocked,
+        Locator = _data.Targets.LocatorBaseOf(e.GameObject),
+    };
+
+    private long? Mint(object? value) => value is null ? null : _data.Handles.Mint(value);
+
+    private static ScreenRect Rect((double X, double Y, double W, double H) r) =>
+        new() { X = Math.Round(r.X, 1), Y = Math.Round(r.Y, 1), W = Math.Round(r.W, 1), H = Math.Round(r.H, 1) };
+
+    private static HashSet<string>? Interactions(List<string>? values, string param)
+    {
+        if (values is null)
+        {
+            return null;
+        }
+
+        var bad = values.FirstOrDefault(v => v is not ("clickable" or "disabled" or "hover" or "display"));
+        return bad is null ? new HashSet<string>(values, StringComparer.Ordinal)
+            : throw ProtocolException.InvalidParams(param, $"'{bad}' isn't an interaction (clickable, disabled, hover, display).");
+    }
+
+    private sealed record UiPage(List<UiElementFacts> Elements, int Offset);
 
     // Resolves the target (a GameObject or component, never the agent's own UI), audits it, and runs the action.
     private UiActionOutcome Act(RequestContext context, Target target, Func<object, UiActionOutcome> action)
