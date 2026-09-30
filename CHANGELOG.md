@@ -154,3 +154,5 @@
   published as a GitHub release (`overlay-assets-r<N>`), locked by `assets/overlay/release.json`, and downloaded and
   verified by the build when missing. `tools/OverlayAssets` rebuilds and releases them
   ([README](tools/OverlayAssets/README.md)).
+- The package is byte-identical wherever the repository is checked out (paths inside the assemblies are mapped to a
+  fixed root, and generated JSON is written with the same line endings as a checkout).

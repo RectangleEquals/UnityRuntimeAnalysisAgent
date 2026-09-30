@@ -8,6 +8,12 @@ $overlay = Join-Path $repo 'assets\overlay'
 $lockPath = Join-Path $overlay 'release.json'
 $repository = 'RectangleEquals/UnityRuntimeAnalysisAgent'
 
+# JSON files are written with LF line endings and no BOM, the same bytes a git checkout has (.gitattributes).
+function Write-JsonFile([string]$path, $value, [int]$depth = 5, [switch]$Compress) {
+    $json = if ($Compress) { $value | ConvertTo-Json -Depth $depth -Compress } else { $value | ConvertTo-Json -Depth $depth }
+    [System.IO.File]::WriteAllText($path, ($json -replace "`r`n", "`n") + "`n", (New-Object System.Text.UTF8Encoding $false))
+}
+
 # The released files: every bundle in the bundle manifest, and the icon atlas.
 $manifest = Get-Content (Join-Path $overlay 'bundles\manifest.json') -Raw | ConvertFrom-Json
 $files = @($manifest.families.PSObject.Properties | ForEach-Object { "bundles/$($_.Value.file)" }) + @('icons/phosphor.png')
@@ -38,7 +44,7 @@ if (Test-Path $lockPath) {
 
 $tag = "overlay-assets-r$revision"
 $lockJson = [ordered]@{ repository = $repository; tag = $tag; revision = $revision; files = $current }
-$lockJson | ConvertTo-Json -Depth 4 | Set-Content $lockPath -Encoding UTF8
+Write-JsonFile $lockPath $lockJson 4
 $paths = ($current.Keys | ForEach-Object { "assets/overlay/$_" }) -join ' '
 Write-Host "Locked to $tag. After committing and pushing release.json, publish the files (from the repository root):"
 Write-Host ""
