@@ -160,6 +160,11 @@ public sealed class AgentHost : IDisposable
         {
             Events.EmittedKinds.Add(kind);
         }
+
+        var probes = new ProbeServices(new Probes.ProbeExecutor(Dispatcher, Data, Pump, Jobs), Jobs, Events, Modes);
+        Dispatcher.Register(probes);
+        RegisterCleanup("disarm waiting probes", probes.Dispose);
+        Events.EmittedKinds.Add(EventKinds.ProbeProgress);
         foreach (var kind in new[] { EventKinds.HookHits, EventKinds.TraceRecords, EventKinds.WatchChanges, EventKinds.EventRaised, EventKinds.Exception, EventKinds.AgentWarning })
         {
             Events.EmittedKinds.Add(kind);

@@ -194,6 +194,8 @@ internal sealed class DataServices
                 return ResolveStatic(parsed.Path!, p.Locator);
             case "live" when parsed.LiveKind is "scene" or "ddol":
                 return ResolveScene(parsed, p.Locator);
+            case "live" when parsed.LiveKind == "asset":
+                return ResolveAsset(parsed, p.Locator);
             default:
                 throw DataErrors.Unsupported($"This agent version can't resolve {parsed.Scheme}{(parsed.LiveKind is null ? string.Empty : "/" + parsed.LiveKind)} locators yet.");
         }
@@ -273,6 +275,17 @@ internal sealed class DataServices
         }
 
         throw DataErrors.NotFound("params.locator", $"The GameObject '{parsed.Path}' has no component matching '{owner}'.");
+    }
+
+    // An asset by its type and instance id (loaded now: instance ids hold only while the game runs).
+    private LocatorResolveResult ResolveAsset(ParsedLocator parsed, string locator)
+    {
+        var type = FindTypes(parsed.Path!, null).FirstOrDefault() ?? throw DataErrors.NotFound("params.locator", $"No loaded type '{parsed.Path}'.");
+        var asset = _data.Unity.FindObjectsOfTypeAll(type).FirstOrDefault(o => _data.Unity.Describe(o)?.InstanceId == parsed.InstanceId)
+            ?? throw DataErrors.NotFound("params.locator", $"No loaded {type.Name} with instance id {parsed.InstanceId} (asset instance ids only hold while the game runs).");
+        var h = _data.Handles.Mint(asset);
+        var resolved = _data.Targets.Resolve(new Target { H = h }, parsed.Members, "params.locator", "params.locator");
+        return new LocatorResolveResult { Target = new Target { H = h }, Path = resolved.Place.Path, Descriptor = _data.Handles.Describe(h) };
     }
 
     // Exploratory lookup by full name (dnlib's '/' for nested types is accepted), optionally in one assembly.

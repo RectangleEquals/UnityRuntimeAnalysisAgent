@@ -111,4 +111,10 @@
   are checked at every yield, and each result carries its status (`passed`, `failed`, `error`, `timeout`, `skipped`),
   message, stack, attachments and the log lines written while it ran; events `test.started`, `test.result`,
   `test.finished`.
+- Probes ([probes](docs/probes.md)): `probe.run`, `probe.runBatch` (a job, in order, with `stopOnError`, a budget and
+  `probe.progress` events), `probe.result` and `probe.cancel`. Kinds `read_statics`, `find_instances`, `read_members`,
+  `query`, `content`, `watch`, `hook_verify`, `trace` and `call` (with the user's consent and Full mode), each built on
+  the agent's own methods; statuses `ok`, `partial`, `failed`, `needs_trigger` (armed until gameplay happens, cancelled
+  or timed out) and `stale`; evidence as locators with short excerpts.
+- `locator.resolve` now resolves asset locators (`live://asset/<Type>/<name>#<instanceId>`) while the game runs.
 
