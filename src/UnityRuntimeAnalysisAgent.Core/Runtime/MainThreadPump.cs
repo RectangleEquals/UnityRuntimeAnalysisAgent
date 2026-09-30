@@ -408,7 +408,7 @@ public sealed class MainThreadPump
             {
                 // Timed out (IsDue said it was due): not a result.
                 routine.Dispose();
-                SafeInvoke(() => work.Failed(new ProtocolException(ErrorCodes.Timeout, $"The condition didn't become true within {until.TimeoutMs:0} ms.")));
+                SafeInvoke(() => work.Failed(new ProtocolException(ErrorCodes.Timeout, until.TimeoutMessage)));
                 return;
             }
 

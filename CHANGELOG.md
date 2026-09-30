@@ -103,3 +103,12 @@
   after `Rules.MaxPauseMs` unless held; `Rules.MaxActive`, `Rules.MaxFiresPerMinute` and `Rules.MaxCapturesPerMinute`
   cap them; files go only under the rule's `outDir`. Rules belong to their connection like instrumentation and all end
   with the agent. Actions that change the game are audited with the rule as their source.
+- In-game tests ([testing](docs/testing.md)): an authoring API in `UnityRuntimeAnalysisAgent.Api` (Api version 0.2):
+  `[GameTestFixture]`, `[GameTest(TimeoutMs, Category, RequiresScene, Order, Skip)]`, per-test and per-fixture setup and
+  teardown, and `GameTestContext` with waits (frames, seconds, conditions, scenes, end of frame), assertions, a log,
+  scoped call counters and call captures, sampled values, uGUI find/click/type, variables and result attachments.
+  `test.list` and `test.run` (a job, Full mode) run them sequentially on the main thread: teardown always runs, timeouts
+  are checked at every yield, and each result carries its status (`passed`, `failed`, `error`, `timeout`, `skipped`),
+  message, stack, attachments and the log lines written while it ran; events `test.started`, `test.result`,
+  `test.finished`.
+

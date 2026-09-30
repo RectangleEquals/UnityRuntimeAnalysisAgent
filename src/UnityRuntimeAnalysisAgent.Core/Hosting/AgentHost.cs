@@ -127,7 +127,8 @@ public sealed class AgentHost : IDisposable
             _config.RemoveInstrumentationOnDisconnect, environment.AgentVersion, Warn);
         Dispatcher.Register(Instrumentation);
         RegisterCleanup("remove instrumentation", Instrumentation.Dispose);
-        Execution = new ExecutionServices(new ContextServices(Data, Pump, Events, Instrumentation.Instrumenter, Log), loader, Warn);
+        var contextServices = new ContextServices(Data, Pump, Events, Instrumentation.Instrumenter, Log);
+        Execution = new ExecutionServices(contextServices, loader, Warn);
         Dispatcher.Register(Execution);
         Instrumentation.RegisterTrigger(Execution.Trigger);
         RegisterCleanup("revert live patches", Execution.Dispose);
@@ -153,6 +154,12 @@ public sealed class AgentHost : IDisposable
         RegisterCleanup("end rules and release their pauses", Rules.Dispose);
         Events.EmittedKinds.Add(EventKinds.RuleFired);
         Events.EmittedKinds.Add(EventKinds.RuleProgress);
+        Dispatcher.Register(new TestServices(contextServices, Execution.Assemblies, Jobs, Logs, unity ?? HeadlessUnity.Instance, environment.AgentVersion,
+            environment.UnityVersion ?? string.Empty));
+        foreach (var kind in new[] { EventKinds.TestStarted, EventKinds.TestResult, EventKinds.TestFinished })
+        {
+            Events.EmittedKinds.Add(kind);
+        }
         foreach (var kind in new[] { EventKinds.HookHits, EventKinds.TraceRecords, EventKinds.WatchChanges, EventKinds.EventRaised, EventKinds.Exception, EventKinds.AgentWarning })
         {
             Events.EmittedKinds.Add(kind);

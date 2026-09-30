@@ -26,7 +26,11 @@ public abstract class PumpWait
 
     /// <summary>Resume once <paramref name="predicate"/> is true (checked each frame); fail with <c>TIMEOUT</c> after
     /// <paramref name="timeoutMs"/> of real time.</summary>
-    public static PumpWait Until(Func<bool> predicate, double timeoutMs) => new UntilWait(predicate ?? throw new ArgumentNullException(nameof(predicate)), timeoutMs);
+    public static PumpWait Until(Func<bool> predicate, double timeoutMs) => Until(predicate, timeoutMs, null);
+
+    /// <summary>As <see cref="Until(Func{bool}, double)"/>, with what a timeout means in words ("Scene 'Main' wasn't loaded").</summary>
+    public static PumpWait Until(Func<bool> predicate, double timeoutMs, string? what) =>
+        new UntilWait(predicate ?? throw new ArgumentNullException(nameof(predicate)), timeoutMs, what);
 
     internal sealed class FramesWait : PumpWait
     {
@@ -48,14 +52,23 @@ public abstract class PumpWait
 
     internal sealed class UntilWait : PumpWait
     {
-        public UntilWait(Func<bool> predicate, double timeoutMs)
+        public UntilWait(Func<bool> predicate, double timeoutMs, string? what)
         {
             Predicate = predicate;
             TimeoutMs = timeoutMs;
+            What = what;
         }
 
         public Func<bool> Predicate { get; }
 
         public double TimeoutMs { get; }
+
+        /// <summary>What a timeout means, in words (null: a condition that didn't become true).</summary>
+        public string? What { get; }
+
+        /// <summary>The timeout's message.</summary>
+        public string TimeoutMessage => What is null
+            ? string.Format(System.Globalization.CultureInfo.InvariantCulture, "The condition didn't become true within {0:0} ms.", TimeoutMs)
+            : string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0} within {1:0} ms.", What, TimeoutMs);
     }
 }
