@@ -498,8 +498,15 @@ public sealed class ExceptionMonitor : IDisposable
             return;
         }
 
-        var match = LoggedException.Match(entry.Message);
-        Report(match.Success ? match.Groups["type"].Value : "Exception", match.Success ? match.Groups["message"].Value : entry.Message, entry.Stack ?? string.Empty, null, "log");
+        var (type, message) = ParseLogged(entry.Message);
+        Report(type, message, entry.Stack ?? string.Empty, null, "log");
+    }
+
+    /// <summary>The exception type and message in a logged exception's text ("Type: message").</summary>
+    internal static (string Type, string Message) ParseLogged(string text)
+    {
+        var match = LoggedException.Match(text);
+        return match.Success ? (match.Groups["type"].Value, match.Groups["message"].Value) : ("Exception", text);
     }
 
     private void OnFirstChance(object? sender, FirstChanceExceptionEventArgs e)

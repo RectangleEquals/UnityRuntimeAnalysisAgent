@@ -84,6 +84,13 @@ public sealed class ConditionEvaluator
             value = null; // Unity's == null
         }
 
+        return Test(value, condition.Op, condition.Value, param);
+    }
+
+    /// <summary>Whether a live value meets one operator (<c>eq</c>, <c>lt</c>, <c>regex</c>, …) against a JSON value.</summary>
+    public bool Test(object? value, string op, JsonValue? json, string param)
+    {
+        var condition = new Condition { Op = op, Value = json };
         switch (condition.Op)
         {
             case "isNull":

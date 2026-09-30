@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using UnityLudometry.Protocol;
+using UnityLudometry.Protocol.Json;
 using UnityLudometry.Protocol.Messages;
 using UnityRuntimeAnalysisAgent.Api;
 using UnityRuntimeAnalysisAgent.Core.Data;
@@ -177,6 +178,58 @@ internal sealed class SnippetRunner
         }
 
         return null;
+    }
+
+    /// <summary>Runs the snippet inside another main-thread routine (a rule's actions): yields the snippet's waits, then
+    /// hands its result to <paramref name="done"/>.</summary>
+    public IEnumerable<object?> Steps(SnippetEntry entry, JsonObject? args, string? outDir, CancellationToken cancellation, Action<ExecRunResult> done)
+    {
+        var clock = Stopwatch.StartNew();
+        var startFrame = _services.Pump.Clock.FrameCount;
+        var context = new AgentContext(_services, args, null, new Dictionary<string, object?>(StringComparer.Ordinal), cancellation, outDir, collect: true);
+        try
+        {
+            var returned = Invoke(entry, context);
+            if (entry.IsIterator && returned is IEnumerator iterator)
+            {
+                var drive = Drive(iterator);
+                while (drive.MoveNext())
+                {
+                    yield return drive.Current;
+                }
+
+                returned = context.Returned;
+            }
+
+            done(new ExecRunResult
+            {
+                Value = _services.Data.Writer(ViewOptions.Default, _services.Pump.Clock.FrameCount).Write(returned, new Place()),
+                Logs = context.Logs,
+                Emitted = context.Emitted,
+                DurationMs = clock.ElapsedMilliseconds,
+                Frames = Math.Max(0, _services.Pump.Clock.FrameCount - startFrame),
+            });
+        }
+        finally
+        {
+            context.End();
+        }
+    }
+
+    /// <summary>Calls a predicate snippet (<c>bool Check(IAgentContext)</c>) once; main thread. <c>EXEC_FAILED</c> when it
+    /// throws or doesn't return a bool.</summary>
+    public bool Check(SnippetEntry entry)
+    {
+        var context = new AgentContext(_services, null, null, new Dictionary<string, object?>(StringComparer.Ordinal), CancellationToken.None, null, collect: false);
+        try
+        {
+            return Invoke(entry, context) is bool value ? value
+                : throw AgentErrors.ExecFailed("run", $"{entry.Method.DeclaringType?.FullName}.{entry.Method.Name} must return a bool.");
+        }
+        finally
+        {
+            context.End();
+        }
     }
 
     public List<ExecSession> Sessions()

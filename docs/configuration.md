@@ -17,7 +17,7 @@ agent logs a warning saying so.
 | `Jobs.MaxConcurrent` | `2` | Long-running jobs (surveys, indexes, exports) at once; more wait in a queue. |
 | `Handles.Max` | `20000` | Live object handles kept (least recently used ones are released). |
 | `Instrumentation.MaxMethods` | `2000` | Methods instrumented at once. |
-| `Instrumentation.RemoveOnDisconnect` | `true` | Remove a client's non-persistent instrumentation when it disconnects. |
+| `Instrumentation.RemoveOnDisconnect` | `true` | Remove a client's non-persistent instrumentation and rules when it disconnects. |
 | `Logs.BufferSize` | `10000` | Log lines kept in memory. |
 | `Events.MaxQueueBytes` | `8388608` | Unsent events per client, in bytes; over it the oldest events are dropped and counted (never replies). |
 | `Agent.LogLevel` | `Info` | The agent's own log verbosity. Values: `Debug`, `Info`, `Warning`, `Error`. |

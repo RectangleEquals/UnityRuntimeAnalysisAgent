@@ -114,6 +114,9 @@ public interface IGameControl
     /// <summary><c>Application.runInBackground</c>.</summary>
     bool RunInBackground { get; set; }
 
+    /// <summary><c>AudioListener.pause</c>: pauses the game's audio (sources set to ignore it keep playing).</summary>
+    bool AudioPaused { get; set; }
+
     /// <summary><c>Application.Quit(exitCode)</c>.</summary>
     void Quit(int exitCode);
 

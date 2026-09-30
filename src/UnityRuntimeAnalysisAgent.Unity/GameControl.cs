@@ -57,6 +57,12 @@ internal sealed class GameControl : IGameControl
         GraphicsDevice = SystemInfo.graphicsDeviceName ?? string.Empty,
     };
 
+    public bool AudioPaused
+    {
+        get => AudioListener.pause;
+        set => AudioListener.pause = value;
+    }
+
     public bool RunInBackground
     {
         get => Application.runInBackground;

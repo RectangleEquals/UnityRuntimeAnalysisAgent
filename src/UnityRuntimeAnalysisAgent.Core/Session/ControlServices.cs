@@ -79,7 +79,17 @@ internal sealed class ControlServices
     }
 
     [RpcMethod(Methods.TimePause)]
-    public ProtocolMessage TimePause(RequestContext context)
+    public ProtocolMessage TimePause(RequestContext context) => new TimePauseResult { PreviousTimeScale = Pause(), Paused = true };
+
+    [RpcMethod(Methods.TimeResume)]
+    public ProtocolMessage TimeResume(RequestContext context)
+    {
+        Resume();
+        return new TimeResumeResult { TimeScale = Control.TimeScale, Paused = Control.TimeScale == 0 };
+    }
+
+    /// <summary>Pauses the game (time scale 0), remembering the scale to go back to; returns that scale. Main thread.</summary>
+    public double Pause()
     {
         var current = Control.TimeScale;
         double previous;
@@ -94,19 +104,17 @@ internal sealed class ControlServices
         }
 
         Control.TimeScale = 0;
-        return new TimePauseResult { PreviousTimeScale = previous, Paused = true };
+        return previous;
     }
 
-    [RpcMethod(Methods.TimeResume)]
-    public ProtocolMessage TimeResume(RequestContext context)
+    /// <summary>Resumes at the scale the game had before it was paused (1 if unknown). Main thread.</summary>
+    public void Resume()
     {
         Control.TimeScale = ResumeScale();
         lock (_gate)
         {
             _pausedFrom = null;
         }
-
-        return new TimeResumeResult { TimeScale = Control.TimeScale, Paused = Control.TimeScale == 0 };
     }
 
     /// <summary>Runs the game at its previous time scale for exactly N frames, then pauses it again: the scale is restored

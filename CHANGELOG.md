@@ -91,3 +91,15 @@
   sits in, and not faded out by a CanvasGroup; `ui.snapshot`/`ui.find` with `onlyVisible` use that. `ui-marks` mark
   only what can be seen (by its visible part), count their limit (now 199) after leaving out what can't, and place each
   number beside its box where it covers no other mark, sized to the image. UI text no longer includes rich-text markup.
+- Rules ([rules](docs/rules.md)): "when these things happen, do this". Conditions: scenes, delays (real time, game time,
+  frames), values (operators or changes), hooked calls (enter, exit, throw; counted; filtered on arguments), C# events
+  and UnityEvents, log lines, logged exceptions, uGUI elements appearing, disappearing or becoming interactable, and
+  compiled predicates; combined with `all` (latched or simultaneous), `any`, `seq` (with `withinMs`), `not` (for a
+  window) and `count`. Actions, in order on the main thread: pause (optionally audio), wait frames or milliseconds,
+  screenshot (every capture option), snapshot, the rule's hook records, log entries, log marker, snippet, UI click,
+  method call, resume (after a delay), stay paused, and emit. `pauseImmediately` pauses inside the hooked call.
+  Methods `rule.add` (the mode a rule needs is computed from its content), `rule.list`, `rule.get`, `rule.wait`,
+  `rule.hold`, `rule.cancel`, `rules.clear`; events `rule.fired` and `rule.progress`. Pauses held by rules are released
+  after `Rules.MaxPauseMs` unless held; `Rules.MaxActive`, `Rules.MaxFiresPerMinute` and `Rules.MaxCapturesPerMinute`
+  cap them; files go only under the rule's `outDir`. Rules belong to their connection like instrumentation and all end
+  with the agent. Actions that change the game are audited with the rule as their source.

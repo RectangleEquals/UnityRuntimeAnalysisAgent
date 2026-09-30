@@ -54,6 +54,11 @@ IL2CPP games aren't supported in this version.
   (`obj.invoke`) instead. There is no low-level input injection.
 - **Pausing uses the time scale.** `time.pause` and `time.step` set `Time.timeScale`, so gameplay driven by unscaled
   time or a game's own clock keeps going.
+- **Rules' overlay parts wait for the overlay.** The `prompt` and `pick` conditions never occur and the `notify` and
+  `highlight` actions show nothing until the in-game overlay exists; rules using them are accepted
+  ([rules](rules.md)).
+- **The `exception` rule condition sees exceptions Unity logs** (unhandled ones and those the game logs), not every
+  thrown exception.
 - **`app.quit`'s exit code needs Unity 2018.2 or newer**; on older versions the game quits with Unity's own code.
 - **Screenshots need a rendering game.** A game started without graphics (`-nographics`) has nothing to capture;
   `screenshot.*` answers `UNSUPPORTED` there.

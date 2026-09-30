@@ -89,7 +89,8 @@ public sealed class AgentHost : IDisposable
         Dispatcher.Register(new DiagnosticsService(this));
         Dispatcher.Register(new DataServices(Data, Pump));
         Dispatcher.Register(new CodeServices(Data, Code, Jobs, environment));
-        Dispatcher.Register(new LiveServices(Data, Code, Pump, Jobs, Modes));
+        var live = new LiveServices(Data, Code, Pump, Jobs, Modes);
+        Dispatcher.Register(live);
         Events.EmittedKinds.Add(EventKinds.SceneChanged);
         if (unity is not null)
         {
@@ -137,6 +138,21 @@ public sealed class AgentHost : IDisposable
         var control = new ControlServices(Data, Pump, unity ?? HeadlessUnity.Instance);
         Dispatcher.Register(control);
         Instrumentation.RegisterTrigger(control.Trigger);
+        Rules = new RuleServices(Data, Pump, unity ?? HeadlessUnity.Instance, Logs, Events, Modes, Instrumentation.Hooks,
+            new RuleActors(control, Screenshots, live, Execution.Snippets, Activity),
+            new RuleLimits
+            {
+                MaxActive = _config.RulesMaxActive,
+                MaxFiresPerMinute = _config.RulesMaxFiresPerMinute,
+                MaxCapturesPerMinute = _config.RulesMaxCapturesPerMinute,
+                MaxPauseMs = _config.RulesMaxPauseMs,
+                RemoveOnDisconnect = _config.RemoveInstrumentationOnDisconnect,
+            },
+            Warn);
+        Dispatcher.Register(Rules);
+        RegisterCleanup("end rules and release their pauses", Rules.Dispose);
+        Events.EmittedKinds.Add(EventKinds.RuleFired);
+        Events.EmittedKinds.Add(EventKinds.RuleProgress);
         foreach (var kind in new[] { EventKinds.HookHits, EventKinds.TraceRecords, EventKinds.WatchChanges, EventKinds.EventRaised, EventKinds.Exception, EventKinds.AgentWarning })
         {
             Events.EmittedKinds.Add(kind);
@@ -258,6 +274,9 @@ public sealed class AgentHost : IDisposable
 
     /// <summary>Sends an event to every connection subscribed to its kind.</summary>
     public void Publish(string kind, ProtocolMessage payload, JsonObject? context = null) => Events.Publish(kind, payload, context);
+
+    /// <summary>Automation rules.</summary>
+    internal RuleServices Rules { get; }
 
     /// <summary>Instrumentation: hooks, traces, profiles, verification, watches, event subscriptions, exceptions.</summary>
     internal InstrumentationServices Instrumentation { get; }
@@ -527,6 +546,7 @@ public sealed class AgentHost : IDisposable
 
             Session.CancelAll(connection);
             Instrumentation.OnDisconnect(connection.Id.ToString(CultureInfo.InvariantCulture));
+            Rules.OnDisconnect(connection.Id.ToString(CultureInfo.InvariantCulture));
             release();
         };
         connection.Start();

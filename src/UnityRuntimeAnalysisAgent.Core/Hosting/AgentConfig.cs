@@ -57,6 +57,18 @@ public sealed class AgentConfig
     /// <summary>Config key of <see cref="LogBufferSize"/>.</summary>
     public const string LogBufferSizeKey = "Logs.BufferSize";
 
+    /// <summary>Config key of <see cref="RulesMaxActive"/>.</summary>
+    public const string RulesMaxActiveKey = "Rules.MaxActive";
+
+    /// <summary>Config key of <see cref="RulesMaxFiresPerMinute"/>.</summary>
+    public const string RulesMaxFiresPerMinuteKey = "Rules.MaxFiresPerMinute";
+
+    /// <summary>Config key of <see cref="RulesMaxCapturesPerMinute"/>.</summary>
+    public const string RulesMaxCapturesPerMinuteKey = "Rules.MaxCapturesPerMinute";
+
+    /// <summary>Config key of <see cref="RulesMaxPauseMs"/>.</summary>
+    public const string RulesMaxPauseMsKey = "Rules.MaxPauseMs";
+
     /// <summary>Config key of <see cref="RemoveInstrumentationOnDisconnect"/>.</summary>
     public const string RemoveOnDisconnectKey = "Instrumentation.RemoveOnDisconnect";
 
@@ -96,7 +108,19 @@ public sealed class AgentConfig
     /// <summary>Log entries kept in memory (default 10,000).</summary>
     public int LogBufferSize { get; set; } = 10_000;
 
-    /// <summary>Remove a client's non-persistent instrumentation when it disconnects (default true).</summary>
+    /// <summary>Automation rules armed at once (default 32).</summary>
+    public int RulesMaxActive { get; set; } = 32;
+
+    /// <summary>Rule firings per minute, all rules together, before a rule is suspended (default 60).</summary>
+    public int RulesMaxFiresPerMinute { get; set; } = 60;
+
+    /// <summary>Screenshots taken by rules per minute (default 30).</summary>
+    public int RulesMaxCapturesPerMinute { get; set; } = 30;
+
+    /// <summary>Longest a rule keeps the game paused unless held with <c>rule.hold</c>, in milliseconds (default 30,000).</summary>
+    public int RulesMaxPauseMs { get; set; } = 30_000;
+
+    /// <summary>Remove a client's non-persistent instrumentation and rules when it disconnects (default true).</summary>
     public bool RemoveInstrumentationOnDisconnect { get; set; } = true;
 
     /// <summary>Problems found while reading (each already resolved to a default).</summary>
@@ -177,6 +201,10 @@ public sealed class AgentConfig
         config.MaxHandles = config.ReadInt(source, MaxHandlesKey, config.MaxHandles, 100, 1_000_000);
         config.MaxInstrumentedMethods = config.ReadInt(source, MaxInstrumentedMethodsKey, config.MaxInstrumentedMethods, 1, 20_000);
         config.LogBufferSize = config.ReadInt(source, LogBufferSizeKey, config.LogBufferSize, 100, 1_000_000);
+        config.RulesMaxActive = config.ReadInt(source, RulesMaxActiveKey, config.RulesMaxActive, 1, 1000);
+        config.RulesMaxFiresPerMinute = config.ReadInt(source, RulesMaxFiresPerMinuteKey, config.RulesMaxFiresPerMinute, 1, 100_000);
+        config.RulesMaxCapturesPerMinute = config.ReadInt(source, RulesMaxCapturesPerMinuteKey, config.RulesMaxCapturesPerMinute, 1, 10_000);
+        config.RulesMaxPauseMs = config.ReadInt(source, RulesMaxPauseMsKey, config.RulesMaxPauseMs, 100, 3_600_000);
         config.RemoveInstrumentationOnDisconnect = config.ReadBool(source, RemoveOnDisconnectKey, config.RemoveInstrumentationOnDisconnect);
         return config;
     }
@@ -192,6 +220,10 @@ public sealed class AgentConfig
         new KeyValuePair<string, long>(MaxHandlesKey, MaxHandles),
         new KeyValuePair<string, long>(MaxInstrumentedMethodsKey, MaxInstrumentedMethods),
         new KeyValuePair<string, long>(LogBufferSizeKey, LogBufferSize),
+        new KeyValuePair<string, long>(RulesMaxActiveKey, RulesMaxActive),
+        new KeyValuePair<string, long>(RulesMaxFiresPerMinuteKey, RulesMaxFiresPerMinute),
+        new KeyValuePair<string, long>(RulesMaxCapturesPerMinuteKey, RulesMaxCapturesPerMinute),
+        new KeyValuePair<string, long>(RulesMaxPauseMsKey, RulesMaxPauseMs),
     };
 
     private bool ReadBool(IConfigSource source, string key, bool fallback)

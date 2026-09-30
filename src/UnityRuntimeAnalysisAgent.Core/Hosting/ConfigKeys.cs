@@ -77,7 +77,7 @@ public static class ConfigKeys
         new ConfigKey("Jobs", "MaxConcurrent", ConfigKind.Int, "2", "Long-running jobs (surveys, indexes, exports) at once; more wait in a queue."),
         new ConfigKey("Handles", "Max", ConfigKind.Int, "20000", "Live object handles kept (least recently used ones are released)."),
         new ConfigKey("Instrumentation", "MaxMethods", ConfigKind.Int, "2000", "Methods instrumented at once."),
-        new ConfigKey("Instrumentation", "RemoveOnDisconnect", ConfigKind.Bool, "true", "Remove a client's non-persistent instrumentation when it disconnects."),
+        new ConfigKey("Instrumentation", "RemoveOnDisconnect", ConfigKind.Bool, "true", "Remove a client's non-persistent instrumentation and rules when it disconnects."),
         new ConfigKey("Logs", "BufferSize", ConfigKind.Int, "10000", "Log lines kept in memory."),
         new ConfigKey("Events", "MaxQueueBytes", ConfigKind.Int, "8388608", "Unsent events per client, in bytes; over it the oldest events are dropped and counted (never replies)."),
         new ConfigKey("Agent", "LogLevel", ConfigKind.Choice, "Info", "The agent's own log verbosity.", "Debug", "Info", "Warning", "Error"),

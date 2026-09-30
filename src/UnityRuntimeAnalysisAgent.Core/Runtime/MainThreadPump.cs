@@ -49,6 +49,7 @@ public sealed class MainThreadPump
     private readonly Queue<PumpWork> _queue = new();
     private readonly List<Routine> _routines = new();
     private readonly List<Routine> _endOfFrame = new();
+    private readonly Queue<PumpWork> _endOfFrameQueue = new();
     private FrameTime _clock;
     private long _ticks;
     private double _lastTickAtMs;
@@ -111,7 +112,7 @@ public sealed class MainThreadPump
         {
             lock (_gate)
             {
-                return _queue.Count + _routines.Count + _endOfFrame.Count;
+                return _queue.Count + _endOfFrameQueue.Count + _routines.Count + _endOfFrame.Count;
             }
         }
     }
@@ -253,22 +254,41 @@ public sealed class MainThreadPump
         }
     }
 
-    /// <summary>End of the frame: resume routines that yielded <see cref="PumpWait.EndOfFrame"/>.</summary>
+    /// <summary>Queues work to start at the end of the current frame (on the main thread), instead of at the start of the
+    /// next one: something that happened during this frame's game code is acted on within the same frame.</summary>
+    public void EnqueueEndOfFrame(PumpWork work)
+    {
+        lock (_gate)
+        {
+            _endOfFrameQueue.Enqueue(work);
+        }
+    }
+
+    /// <summary>End of the frame: resume routines that yielded <see cref="PumpWait.EndOfFrame"/>, then start work queued
+    /// for the end of this frame.</summary>
     public void EndOfFrame()
     {
         try
         {
             List<Routine> due;
+            List<PumpWork> starting;
             lock (_gate)
             {
                 due = new List<Routine>(_endOfFrame);
                 _endOfFrame.Clear();
+                starting = new List<PumpWork>(_endOfFrameQueue);
+                _endOfFrameQueue.Clear();
             }
 
             var clock = Clock;
             foreach (var routine in due)
             {
                 Step(routine, clock);
+            }
+
+            foreach (var work in starting)
+            {
+                Begin(work, clock);
             }
         }
         catch (Exception e)
@@ -297,7 +317,9 @@ public sealed class MainThreadPump
         lock (_gate)
         {
             queued = new List<PumpWork>(_queue);
+            queued.AddRange(_endOfFrameQueue);
             _queue.Clear();
+            _endOfFrameQueue.Clear();
             routines = new List<Routine>(_routines);
             routines.AddRange(_endOfFrame);
             _routines.Clear();
