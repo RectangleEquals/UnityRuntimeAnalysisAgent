@@ -15,6 +15,12 @@ $projects = Join-Path $here 'Projects'
 $bundles = Join-Path $repo 'assets\overlay\bundles'
 $assetsVersion = 1  # raise when a change in Source needs agents to require the new bundles
 
+# JSON files are written with LF line endings and no BOM, the same bytes a git checkout has (.gitattributes).
+function Write-JsonFile([string]$path, $value, [int]$depth = 5, [switch]$Compress) {
+    $json = if ($Compress) { $value | ConvertTo-Json -Depth $depth -Compress } else { $value | ConvertTo-Json -Depth $depth }
+    [System.IO.File]::WriteAllText($path, ($json -replace "`r`n", "`n") + "`n", (New-Object System.Text.UTF8Encoding $false))
+}
+
 function Find-Editors {
     $roots = @()
     $hubPath = Join-Path $env:APPDATA 'UnityHub\secondaryInstallPath.json'
@@ -98,7 +104,7 @@ foreach ($f in $wanted) {
     $recordPath = Join-Path $bundles "$f.json"
     $record = Get-Content $recordPath -Raw | ConvertFrom-Json
     $record | Add-Member -NotePropertyName sourceSha256 -NotePropertyValue $sourceHash -Force
-    $record | ConvertTo-Json -Depth 4 -Compress | Set-Content $recordPath -Encoding UTF8
+    Write-JsonFile $recordPath $record 4 -Compress
     Write-Host "  $($done.Line.Substring($done.Line.IndexOf('[OverlayAssets]')))"
     $built++
 }
@@ -111,6 +117,6 @@ foreach ($record in Get-ChildItem $bundles -Filter '*.json' | Where-Object { $_.
 $stale = @($families.Values | Where-Object { $_.sourceSha256 -ne $sourceHash } | ForEach-Object { $_.family })
 if ($stale.Count -gt 0) { Write-Warning "Built from older sources, rebuild: $($stale -join ', ')." }
 $manifest = [ordered]@{ assetsVersion = $assetsVersion; sourceSha256 = $sourceHash; families = $families }
-$manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $bundles 'manifest.json') -Encoding UTF8
+Write-JsonFile (Join-Path $bundles 'manifest.json') $manifest 5
 Write-Host "Built $built famil$(if ($built -eq 1) { 'y' } else { 'ies' }); manifest lists: $($families.Keys -join ', ')."
 if ($built -gt 0) { Write-Host "Next: tools/OverlayAssets/release.ps1 locks the new bundles and prints the release command." }

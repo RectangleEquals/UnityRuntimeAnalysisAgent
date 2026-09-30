@@ -73,7 +73,7 @@ def main() -> int:
         "cell": CELL,
         "size": [atlas.width, atlas.height],
         "icons": index,
-    }, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    }, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")  # LF, as a git checkout has it
     (LICENSES / "Phosphor-MIT.txt").write_bytes(read("LICENSE"))
     print(f"  {len(cells)} icons ({len(ICONS)} × regular/fill) in a {atlas.width}×{atlas.height} atlas")
     return 0
