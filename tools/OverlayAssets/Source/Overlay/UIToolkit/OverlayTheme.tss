@@ -1,0 +1,5 @@
+/* The overlay's UI Toolkit theme: Unity's default theme for the built-in controls, plus our base. The overlay's look
+   comes from its theme files (overlay/themes/*.json), applied as inline styles; this sheet only has to exist in the
+   bundle and change rarely (a change needs a bundle rebuild in every family). */
+@import url("unity-theme://default");
+@import url("OverlayBase.uss");

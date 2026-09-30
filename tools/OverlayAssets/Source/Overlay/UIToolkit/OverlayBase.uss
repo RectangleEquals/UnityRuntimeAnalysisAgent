@@ -1,0 +1,17 @@
+/* Base rules for the overlay (UI Toolkit). Keep this small: styles come from the overlay's theme files at runtime. */
+
+/* The renderer's self-check: an element with this class must resolve these values, or the theme didn't apply
+   (a UI Toolkit style-sheet format change is silent) and the overlay falls back to its uGUI renderer. */
+.ov-probe {
+    border-top-width: 3px;
+    border-top-color: rgb(1, 2, 3);
+}
+
+/* The overlay's root fills its panel and never takes pointer events itself. */
+.ov-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}

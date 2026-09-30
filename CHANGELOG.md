@@ -143,3 +143,14 @@
   (`overlay.estop`) and then disconnects them. New settings `Overlay.Renderer`, `Overlay.Theme`, `Overlay.RetroFonts`,
   `Overlay.Effects`, `Overlay.Gamepad`, `Overlay.GamepadToggle` and `Overlay.GamepadPausesGame`
   ([configuration](docs/configuration.md)).
+- The overlay's data layer and assets (still not drawn; the renderers follow): view files (panels, text, buttons,
+  lists, tables and the other node types, with bindings to the agent's data and commands) validated as they load, with
+  anything unknown skipped and reported; themes of tokens and classes with hover/focus/active/disabled/checked
+  states; a flexbox layout engine matching UI Toolkit's own layout; keyboard/gamepad focus and button chords; tweens
+  over unscaled time; font choice (the pixel font at whole multiples of its size). The package now ships
+  `overlay/` next to the plugin: asset bundles for Unity 2021.3–6000.2 and 6000.3+ (fonts, UI Toolkit theme, effect
+  shaders), a Phosphor icon atlas, the default theme and the fonts' and icons' licences, all with hashes in
+  `package.json`; the build refuses bundles that don't match their manifest. The binaries aren't in git: they're
+  published as a GitHub release (`overlay-assets-r<N>`), locked by `assets/overlay/release.json`, and downloaded and
+  verified by the build when missing. `tools/OverlayAssets` rebuilds and releases them
+  ([README](tools/OverlayAssets/README.md)).
