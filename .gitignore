@@ -35,3 +35,12 @@ Directory.Build.local.props
 *.local.props
 *.local.json
 
+
+# Unity projects the overlay asset build creates (tools/OverlayAssets/build.ps1)
+tools/OverlayAssets/Projects/
+
+# Overlay binaries: released as GitHub release assets and locked by assets/overlay/release.json (the build downloads
+# them); the source fonts are fetched by tools/OverlayAssets/fonts.py
+assets/overlay/bundles/*.bundle
+assets/overlay/icons/*.png
+tools/OverlayAssets/Source/Overlay/Fonts/*.ttf

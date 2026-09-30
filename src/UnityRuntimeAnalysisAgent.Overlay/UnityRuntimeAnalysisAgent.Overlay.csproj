@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- In-game overlay (IMGUI renderer, skin, arrow, input blocker, picker). Optional at runtime. -->
+  <!-- The in-game overlay: views, themes, the flex layout engine, focus, motion and assets (D-009); renderers follow. Optional at runtime. -->
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <RootNamespace>UnityRuntimeAnalysisAgent.Overlay</RootNamespace>

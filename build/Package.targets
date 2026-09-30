@@ -1,7 +1,7 @@
 <Project>
   <!--
     Imported by the BepInEx 5 plugin project. After a Release build, the packager turns the build output into dist/:
-    the plugin folder, package.json and the release zip. Debug builds and IDE design-time builds skip it.
+    the plugin folder (with the overlay's assets from assets/overlay), package.json and the release zip. Debug builds and IDE design-time builds skip it.
   -->
   <PropertyGroup>
     <AgentApiVersion>0.1</AgentApiVersion>
@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <Target Name="PackageAgent" AfterTargets="Build" Condition="'$(Configuration)' == 'Release' and '$(DesignTimeBuild)' != 'true'">
-    <Exec Command="dotnet &quot;$(PackagerAssembly)&quot; --plugin-dir &quot;$(OutDir.TrimEnd('\'))&quot; --dist &quot;$(AgentDistDir)&quot; --version &quot;$(Version)&quot; --api &quot;$(AgentApiVersion)&quot; --commit &quot;$(SourceRevisionId)&quot;" />
+    <Exec Command="dotnet &quot;$(PackagerAssembly)&quot; --plugin-dir &quot;$(OutDir.TrimEnd('\'))&quot; --dist &quot;$(AgentDistDir)&quot; --version &quot;$(Version)&quot; --api &quot;$(AgentApiVersion)&quot; --commit &quot;$(SourceRevisionId)&quot; --overlay &quot;$(MSBuildThisFileDirectory)..\assets\overlay&quot;" />
   </Target>
 
   <!-- Developer convenience: copy the built plugin into a local game (GameDir from Directory.Build.local.props). -->

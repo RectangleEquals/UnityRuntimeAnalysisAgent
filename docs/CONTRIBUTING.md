@@ -9,17 +9,21 @@ rules that keep the plugin working across many Unity games. The project is pre-r
 |---|---|
 | `src/UnityRuntimeAnalysisAgent.Core` | The agent itself: protocol, request handling, analysis and instrumentation. Knows nothing about Unity or the loader. |
 | `src/UnityRuntimeAnalysisAgent.Unity` | Unity bindings: everything that touches `UnityEngine`. |
-| `src/UnityRuntimeAnalysisAgent.Overlay` | The in-game overlay (IMGUI). |
+| `src/UnityRuntimeAnalysisAgent.Overlay` | The in-game overlay: views and themes, the flex layout engine, focus, motion, assets (renderers are in progress). |
 | `src/UnityRuntimeAnalysisAgent.Api` | The small public API that snippets, live patches and in-game mod tests compile against. |
 | `src/UnityRuntimeAnalysisAgent.BepInEx5` | The BepInEx 5 plugin entry point that wires everything together. |
 | `build/Packager` | Build-time tool that makes the release package (see below). |
 | `tools/AgentClient` | A small client library: connect, authenticate, send requests, receive events. |
 | `tools/AgentConsole` | A developer console for talking to a running agent (built on `AgentClient`). |
+| `tools/OverlayAssets` | Sources and scripts for the overlay's assets: fonts, the UI Toolkit theme, shaders, icons ([README](../tools/OverlayAssets/README.md)). |
+| `assets/overlay` | The overlay's shipped assets: themes, views, licences, the bundle manifest and `release.json`, which locks the binaries released separately (bundles, icon atlas). All copied into the package. |
 | `external/protocol` | Git submodule with the shared protocol (schemas and the `UnityLudometry.Protocol` package). See [its README](../external/README.md). |
 
 ## Building
 
-Requirements: the .NET SDK pinned in `global.json` (10.0.x). Nothing else is needed to build.
+Requirements: the .NET SDK pinned in `global.json` (10.0.x). Nothing else is needed to build. The first Release build
+downloads the overlay's binary assets (asset bundles, icon atlas) from this repository's `overlay-assets-r<N>` release
+and checks them against `assets/overlay/release.json`; later builds use the downloaded copies.
 
 ```
 git clone --recursive https://github.com/RectangleEquals/UnityRuntimeAnalysisAgent
