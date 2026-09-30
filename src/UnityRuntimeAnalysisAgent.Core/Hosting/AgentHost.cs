@@ -17,6 +17,7 @@ using UnityRuntimeAnalysisAgent.Core.Dispatch;
 using UnityRuntimeAnalysisAgent.Core.Execution;
 using UnityRuntimeAnalysisAgent.Core.Instrumentation;
 using UnityRuntimeAnalysisAgent.Core.Jobs;
+using UnityRuntimeAnalysisAgent.Core.Overlay;
 using UnityRuntimeAnalysisAgent.Core.Runtime;
 using UnityRuntimeAnalysisAgent.Core.Session;
 using UnityRuntimeAnalysisAgent.Core.Transport;
@@ -184,7 +185,21 @@ public sealed class AgentHost : IDisposable
         {
             Log.Warning(warning);
         }
+
+        var overlaySettings = OverlaySettings.Read(config);
+        foreach (var warning in overlaySettings.Warnings)
+        {
+            Log.Warning(warning);
+        }
+
+        if (overlaySettings.Enabled)
+        {
+            Overlay = CreateOverlay(overlaySettings, control);
+        }
     }
+
+    /// <summary>The overlay's model layer, when <c>Overlay.Enabled</c> (a renderer draws it).</summary>
+    public OverlayController? Overlay { get; }
 
     /// <summary>The data model: anchors, handles, variables, refs and the value codec.</summary>
     public DataModel Data { get; }
@@ -563,6 +578,50 @@ public sealed class AgentHost : IDisposable
         };
         connection.Start();
         return connection;
+    }
+
+    // The overlay's model: E-STOP wired to the services, prompt answers as events, ticked every frame on the main thread.
+    private OverlayController CreateOverlay(OverlaySettings settings, ControlServices control)
+    {
+        var steps = new EStopSteps
+        {
+            LowerMode = () =>
+            {
+                Modes.Lower(AgentMode.ReadOnly);
+                return Modes.Current;
+            },
+            RevertPatches = () => Execution.RevertPatches(),
+            RemoveInstrumentation = Instrumentation.RemoveAll,
+            CancelJobs = () => Jobs.CancelActive(),
+            CancelRules = () => Rules.CancelAll(),
+            Pause = () => control.Pause(),
+            Emit = report => Events.Publish(EventKinds.OverlayEstop, report),
+            Disconnect = () =>
+            {
+                List<Connection> open;
+                lock (_gate)
+                {
+                    open = _connections.ToList();
+                }
+
+                foreach (var connection in open)
+                {
+                    connection.CloseWhenSent("E-STOP");
+                }
+            },
+            Clock = () => (Pump.Clock.FrameCount, (long)(Pump.Clock.Realtime * 1000)),
+        };
+        var overlay = new OverlayController(settings, null, Modes, new DispatcherQueries(Dispatcher, Pump), steps, Log, Data.Handles.Mint);
+        foreach (var kind in new[] { EventKinds.OverlayEstop, EventKinds.OverlayPromptResult, EventKinds.OverlayPicked, EventKinds.OverlayRequest })
+        {
+            Events.EmittedKinds.Add(kind);
+        }
+
+        overlay.Prompts.Answered += (prompt, button) => Events.Publish(EventKinds.OverlayPromptResult, new PromptResultEventParams { Id = prompt.Id, Button = button });
+        Action<FrameTime> tick = clock => overlay.Tick(clock.Realtime);
+        Pump.Ticked += tick;
+        RegisterCleanup("stop the overlay's model", () => Pump.Ticked -= tick);
+        return overlay;
     }
 
     private DiscoveryFile BuildDiscoveryFile() => new()

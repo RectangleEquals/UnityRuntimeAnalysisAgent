@@ -134,3 +134,12 @@
   does), so UI a game draws into a texture is measured in that texture; world-space UI behind the camera counts as off
   screen. Camera-space canvases without a camera are placed like overlays, as Unity draws them.
 
+- The in-game overlay's model layer (nothing is drawn yet; the renderers follow): the Hidden / Collapsed / Expanded
+  states with edge docking, drag-and-snap and the arrow's status; notifications (filtered, coalesced, throttled),
+  prompts with timeouts, highlights, the Inspector's selection history and its lock (edits only in Full mode); tab
+  view models that read the agent's own methods in-process (the overlay's reads stay out of the activity feed, its
+  actions are recorded as `source: overlay`); the Copy report; and E-STOP, which lowers the mode to ReadOnly, reverts
+  live patches, removes instrumentation, cancels jobs and rules (releasing rule-held pauses), tells clients
+  (`overlay.estop`) and then disconnects them. New settings `Overlay.Renderer`, `Overlay.Theme`, `Overlay.RetroFonts`,
+  `Overlay.Effects`, `Overlay.Gamepad`, `Overlay.GamepadToggle` and `Overlay.GamepadPausesGame`
+  ([configuration](docs/configuration.md)).

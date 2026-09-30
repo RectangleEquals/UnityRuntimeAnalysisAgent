@@ -110,5 +110,12 @@ public static class ConfigKeys
         new ConfigKey("Overlay", "ExcludeFromScreenshots", ConfigKind.Bool, "true", "Hide the overlay in screenshots the agent takes."),
         new ConfigKey("Overlay", "VisibleTabs", ConfigKind.Text, "all", "The overlay tabs to show (all, or a comma-separated list)."),
         new ConfigKey("Overlay", "FollowStaticToolSelection", ConfigKind.Bool, "false", "Follow selections made in a static analysis tool, when the orchestrator relays them."),
+        new ConfigKey("Overlay", "Renderer", ConfigKind.Choice, "auto", "How the overlay is drawn (auto picks the first that works).", "auto", "uitoolkit", "ugui", "imgui"),
+        new ConfigKey("Overlay", "Theme", ConfigKind.Text, "default", "The overlay's theme (a file in the overlay's themes folder)."),
+        new ConfigKey("Overlay", "RetroFonts", ConfigKind.Bool, "true", "Use the pixel font for all overlay text (off: smooth fonts)."),
+        new ConfigKey("Overlay", "Effects", ConfigKind.Choice, "on", "Animated effects in the overlay.", "on", "reduced", "off"),
+        new ConfigKey("Overlay", "Gamepad", ConfigKind.Choice, "auto", "Control the overlay with a gamepad.", "auto", "off"),
+        new ConfigKey("Overlay", "GamepadToggle", ConfigKind.Text, "Select+Start", "The gamepad buttons pressed together to expand or collapse the overlay."),
+        new ConfigKey("Overlay", "GamepadPausesGame", ConfigKind.Bool, "false", "Pause the game while the overlay has gamepad focus."),
     };
 }

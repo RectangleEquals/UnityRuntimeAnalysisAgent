@@ -107,6 +107,9 @@ internal sealed class ExecutionServices : IDisposable
     [RpcMethod(Methods.ModList)]
     public ProtocolMessage ModList(RequestContext context) => Mods.List();
 
+    /// <summary>Reverts every live patch set (E-STOP); snippet sessions and loaded mods stay. Returns how many sets were reverted.</summary>
+    public int RevertPatches() => Patches.RevertAll();
+
     /// <summary>Reverts every live patch set and forgets the sessions (shutdown).</summary>
     public void Dispose()
     {

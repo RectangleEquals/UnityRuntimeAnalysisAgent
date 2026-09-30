@@ -244,6 +244,26 @@ public sealed class JobManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Cancels every queued or running job without waiting (E-STOP, on any thread); new jobs can still start. Returns
+    /// how many were cancelled.
+    /// </summary>
+    public int CancelActive()
+    {
+        List<Job> active;
+        lock (_gate)
+        {
+            active = _jobs.Values.Where(j => j.State is "queued" or "running").ToList();
+        }
+
+        foreach (var job in active)
+        {
+            Cancel(job.Id);
+        }
+
+        return active.Count;
+    }
+
     /// <summary>Cancels every job and waits (briefly) for running ones to stop. No new jobs start afterwards.</summary>
     public void CancelAll(int waitMs = 2000)
     {

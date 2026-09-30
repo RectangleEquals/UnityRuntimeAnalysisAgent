@@ -54,6 +54,7 @@ public sealed class Connection : IDisposable
     private Thread? _writer;
     private long _eventSeq;
     private int _closed;
+    private volatile string? _closeReason;
 
     /// <summary>Creates a connection over an accepted stream. Call <see cref="Start"/> to begin.</summary>
     public Connection(Stream stream, string transport, int maxFrameBytes, IAgentLogger log, Action<Connection, RequestEnvelope> onRequest)
@@ -237,6 +238,13 @@ public sealed class Connection : IDisposable
         Enqueue(null);
     }
 
+    /// <summary>Closes the connection once everything already queued (responses, events) has been written.</summary>
+    public void CloseWhenSent(string reason)
+    {
+        _closeReason = reason;
+        Enqueue(null);
+    }
+
     /// <summary>Closes the connection (idempotent).</summary>
     public void Close(string reason, Exception? error = null)
     {
@@ -408,7 +416,7 @@ public sealed class Connection : IDisposable
             {
                 if (item.IsCloseMarker)
                 {
-                    Close("closed after the final response");
+                    Close(_closeReason ?? "closed after the final response");
                     return;
                 }
 

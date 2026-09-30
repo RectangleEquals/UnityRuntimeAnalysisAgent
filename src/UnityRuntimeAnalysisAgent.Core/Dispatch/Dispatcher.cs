@@ -88,6 +88,9 @@ public sealed class RequestContext
 
     /// <summary>The assembly a call loaded or ran (recorded in the activity feed and the audit log).</summary>
     public AuditedAssembly? Assembly { get; set; }
+
+    /// <summary>Not recorded in the Activity feed (the overlay's periodic reads for its views; its actions are recorded).</summary>
+    public bool Unrecorded { get; set; }
 }
 
 /// <summary>A call's outcome: exactly one of a result and an error.</summary>
@@ -331,6 +334,11 @@ public sealed class Dispatcher
 
     private void Record(RequestContext context, MethodEntry? entry, DateTime startedUtc, long durationMs, Outcome outcome)
     {
+        if (context.Unrecorded)
+        {
+            return;
+        }
+
         try
         {
             var response = new JsonObject();

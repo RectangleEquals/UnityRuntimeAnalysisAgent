@@ -233,6 +233,13 @@ internal sealed class InstrumentationServices : IDisposable
         }
     }
 
+    /// <summary>Removes every hook, trace, profile, watch and subscription (E-STOP). Returns how many were removed.</summary>
+    public long RemoveAll()
+    {
+        var cleared = ClearAll();
+        return cleared.Hooks + cleared.Traces + cleared.Profiles + cleared.Watches + cleared.Subscriptions;
+    }
+
     /// <summary>Removes everything (shutdown): no agent patch survives the agent.</summary>
     public void Dispose()
     {

@@ -242,6 +242,24 @@ internal sealed class RuleServices : IDisposable
         }
     }
 
+    /// <summary>
+    /// Ends every armed rule and lets go of every pause a rule holds (E-STOP). The engine keeps running: new rules can
+    /// still be added. Returns how many rules were cancelled.
+    /// </summary>
+    public int CancelAll()
+    {
+        lock (_gate)
+        {
+            var count = CancelWhere(_ => true);
+            foreach (var rule in _rules.Values.Where(r => r.HoldsPause || r.PausedAudio).ToList())
+            {
+                ReleaseSoon(rule);
+            }
+
+            return count;
+        }
+    }
+
     /// <summary>Ends every rule and releases every pause a rule holds (shutdown).</summary>
     public void Dispose()
     {

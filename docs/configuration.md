@@ -50,6 +50,13 @@ agent logs a warning saying so.
 | `Overlay.ExcludeFromScreenshots` | `true` | Hide the overlay in screenshots the agent takes. |
 | `Overlay.VisibleTabs` | `all` | The overlay tabs to show (all, or a comma-separated list). |
 | `Overlay.FollowStaticToolSelection` | `false` | Follow selections made in a static analysis tool, when the orchestrator relays them. |
+| `Overlay.Renderer` | `auto` | How the overlay is drawn (auto picks the first that works). Values: `auto`, `uitoolkit`, `ugui`, `imgui`. |
+| `Overlay.Theme` | `default` | The overlay's theme (a file in the overlay's themes folder). |
+| `Overlay.RetroFonts` | `true` | Use the pixel font for all overlay text (off: smooth fonts). |
+| `Overlay.Effects` | `on` | Animated effects in the overlay. Values: `on`, `reduced`, `off`. |
+| `Overlay.Gamepad` | `auto` | Control the overlay with a gamepad. Values: `auto`, `off`. |
+| `Overlay.GamepadToggle` | `Select+Start` | The gamepad buttons pressed together to expand or collapse the overlay. |
+| `Overlay.GamepadPausesGame` | `false` | Pause the game while the overlay has gamepad focus. |
 
 Settings for features that aren't finished yet (instrumentation, logs, rules, the overlay) are already in the file, so it
 lists everything from the start; they take effect as those features arrive. Shortcuts use BepInEx notation (for example
