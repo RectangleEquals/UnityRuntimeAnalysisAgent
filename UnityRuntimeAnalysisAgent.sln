@@ -29,6 +29,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "build", "build", "{DEE5DD87
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Packager", "build\Packager\Packager.csproj", "{FE390443-8EA7-4293-BC6F-C168A8C89885}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnityRuntimeAnalysisAgent.Overlay.UIToolkit", "src\UnityRuntimeAnalysisAgent.Overlay.UIToolkit\UnityRuntimeAnalysisAgent.Overlay.UIToolkit.csproj", "{4FEAE135-9569-46F6-8938-145978230719}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -147,6 +149,18 @@ Global
 		{FE390443-8EA7-4293-BC6F-C168A8C89885}.Release|x64.Build.0 = Release|Any CPU
 		{FE390443-8EA7-4293-BC6F-C168A8C89885}.Release|x86.ActiveCfg = Release|Any CPU
 		{FE390443-8EA7-4293-BC6F-C168A8C89885}.Release|x86.Build.0 = Release|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Debug|x64.Build.0 = Debug|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Debug|x86.Build.0 = Debug|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Release|x64.ActiveCfg = Release|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Release|x64.Build.0 = Release|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Release|x86.ActiveCfg = Release|Any CPU
+		{4FEAE135-9569-46F6-8938-145978230719}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -161,5 +175,6 @@ Global
 		{480FB56E-9946-46B9-A4EC-FA248ECEDE33} = {A288BEE0-695A-BEEA-455C-649571D89326}
 		{86022D00-A3B3-4F8E-ABBF-69863D85AB2D} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{FE390443-8EA7-4293-BC6F-C168A8C89885} = {DEE5DD87-39C1-BF34-B639-A387DCCF972B}
+		{4FEAE135-9569-46F6-8938-145978230719} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

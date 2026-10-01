@@ -611,7 +611,7 @@ public sealed class AgentHost : IDisposable
             },
             Clock = () => (Pump.Clock.FrameCount, (long)(Pump.Clock.Realtime * 1000)),
         };
-        var overlay = new OverlayController(settings, null, Modes, new DispatcherQueries(Dispatcher, Pump), steps, Log, Data.Handles.Mint);
+        var overlay = new OverlayController(settings, Loader as IConfigWriter, Modes, new DispatcherQueries(Dispatcher, Pump), steps, Log, Data.Handles.Mint);
         foreach (var kind in new[] { EventKinds.OverlayEstop, EventKinds.OverlayPromptResult, EventKinds.OverlayPicked, EventKinds.OverlayRequest })
         {
             Events.EmittedKinds.Add(kind);

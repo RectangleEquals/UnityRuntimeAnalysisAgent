@@ -7,6 +7,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Unity\UnityRuntimeAnalysisAgent.Unity.csproj" />
     <PackageReference Include="UnityEngine.Modules" PrivateAssets="all" ExcludeAssets="runtime" />
+    <!-- Compile-only: HarmonyX is provided by the loader at runtime. -->
+    <PackageReference Include="HarmonyX" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
 </Project>

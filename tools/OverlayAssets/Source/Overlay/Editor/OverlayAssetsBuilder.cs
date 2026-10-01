@@ -64,7 +64,9 @@ public static class OverlayAssetsBuilder
             importer.fontTextureCase = FontTextureCase.Dynamic;
             importer.fontRenderingMode = pixel ? FontRenderingMode.HintedRaster : FontRenderingMode.Smooth;
             importer.fontSize = pixel ? (name.Contains("10px") ? 10 : 12) : 16;
-            importer.characterPadding = pixel ? 0 : 1;
+            // A pixel of padding around every glyph: raster glyphs packed edge to edge bleed into each other in uGUI
+            // wherever a glyph quad isn't exactly pixel-aligned.
+            importer.characterPadding = 1;
             importer.SaveAndReimport();
         }
 

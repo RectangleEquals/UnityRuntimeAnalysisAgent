@@ -3,6 +3,7 @@ using BepInEx;
 using UnityEngine;
 using UnityRuntimeAnalysisAgent.Core;
 using UnityRuntimeAnalysisAgent.Core.Hosting;
+using UnityRuntimeAnalysisAgent.Overlay.Runtime;
 using UnityRuntimeAnalysisAgent.Unity;
 
 namespace UnityRuntimeAnalysisAgent.BepInEx5;
@@ -39,6 +40,7 @@ public sealed class AgentPlugin : BaseUnityPlugin
             environment.LoaderVersion = _loader.LoaderVersion;
             _host = new AgentHost(_loader.Config, environment, log, _unity, _loader);
             _host.Start();
+            OverlayRuntime.Start(_host, _loader, log);
             Application.quitting += OnQuitting;
         }
         catch (Exception e)

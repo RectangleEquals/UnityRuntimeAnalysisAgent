@@ -41,7 +41,7 @@ agent logs a warning saying so.
 | `Overlay.RefreshHz` | `4` | How often the panel's contents refresh, per second. |
 | `Overlay.Toasts` | `Important` | Which notifications are shown next to the overlay. |
 | `Overlay.BlockUiClicks` | `true` | Keep clicks on the overlay from reaching the game's UI. |
-| `Overlay.BlockWorldInput` | `false` | Keep input over the overlay from reaching the game world. |
+| `Overlay.BlockWorldInput` | `false` | Keep mouse clicks over the overlay from reaching the game world (the Input Manager's mouse-button queries; games that only use the Input System package aren't covered). |
 | `Overlay.ForceCursorWhenExpanded` | `true` | Show and free the mouse cursor while the overlay is expanded. |
 | `Overlay.InspectorStartsLocked` | `true` | The inspector starts locked (no edits until unlocked). |
 | `Overlay.LocalTimeControl` | `true` | Allow pausing and stepping the game from the overlay. |
@@ -55,7 +55,7 @@ agent logs a warning saying so.
 | `Overlay.RetroFonts` | `true` | Use the pixel font for all overlay text (off: smooth fonts). |
 | `Overlay.Effects` | `on` | Animated effects in the overlay. Values: `on`, `reduced`, `off`. |
 | `Overlay.Gamepad` | `auto` | Control the overlay with a gamepad. Values: `auto`, `off`. |
-| `Overlay.GamepadToggle` | `Select+Start` | The gamepad buttons pressed together to expand or collapse the overlay. |
+| `Overlay.GamepadToggle` | `Select+Start` | The gamepad buttons pressed together to expand or collapse the overlay. Buttons: `A`, `B`, `X`, `Y`, `LB`, `RB`, `LT`, `RT`, `Select`, `Start`, `LS`, `RS`, and with the Input System package `Up`, `Down`, `Left`, `Right`. |
 | `Overlay.GamepadPausesGame` | `false` | Pause the game while the overlay has gamepad focus. |
 
 Settings for features that aren't finished yet (instrumentation, logs, rules, the overlay) are already in the file, so it
