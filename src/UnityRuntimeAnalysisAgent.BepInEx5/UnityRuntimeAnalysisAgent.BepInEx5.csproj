@@ -10,6 +10,8 @@
     <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Unity\UnityRuntimeAnalysisAgent.Unity.csproj" />
     <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Overlay\UnityRuntimeAnalysisAgent.Overlay.csproj" />
     <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Api\UnityRuntimeAnalysisAgent.Api.csproj" />
+    <!-- Shipped next to the plugin but never referenced: the overlay loads it by name only when it picks UI Toolkit. -->
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Overlay.UIToolkit\UnityRuntimeAnalysisAgent.Overlay.UIToolkit.csproj" ReferenceOutputAssembly="false" OutputItemType="Content" CopyToOutputDirectory="PreserveNewest" />
     <!-- Compile-only: BepInEx (brings BepInEx.BaseLib = BepInEx.dll) and HarmonyX are provided by the installed loader. -->
     <PackageReference Include="BepInEx.Core" PrivateAssets="all" ExcludeAssets="runtime" />
     <PackageReference Include="UnityEngine.Modules" PrivateAssets="all" ExcludeAssets="runtime" />

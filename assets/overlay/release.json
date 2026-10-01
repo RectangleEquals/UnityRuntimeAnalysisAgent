@@ -1,15 +1,15 @@
 {
   "repository": "RectangleEquals/UnityRuntimeAnalysisAgent",
-  "tag": "overlay-assets-r1",
-  "revision": 1,
+  "tag": "overlay-assets-r2",
+  "revision": 2,
   "files": {
     "bundles/2021.3.bundle": {
-      "sha256": "f23addea0dd02594d7c412e7c851676cb1ff8adf2f505bb98d01bab3c1039634",
-      "size": 742757
+      "sha256": "bd45e32ef9248af69def5f8f16417852652cb4578b834e2b5b1a68924a7144e4",
+      "size": 742758
     },
     "bundles/6000.3.bundle": {
-      "sha256": "8b4776ed52fff080d94bcaca0ba3be53e1ba2516a7b3552984e70cedebce8735",
-      "size": 751873
+      "sha256": "f4629d623085268c8f0f5b135a737e43352557b772323460e80ca92f6fe2638b",
+      "size": 751874
     },
     "icons/phosphor.png": {
       "sha256": "4a0a862acebdee3f3fd93f38ab21440e8e9af0865fd8094dbf00a11272468859",

@@ -28,6 +28,7 @@ public static class PackageBuilder
         "UnityRuntimeAnalysisAgent.BepInEx5.dll",
         "UnityRuntimeAnalysisAgent.Core.dll",
         "UnityRuntimeAnalysisAgent.Overlay.dll",
+        "UnityRuntimeAnalysisAgent.Overlay.UIToolkit.dll",
         "UnityRuntimeAnalysisAgent.Unity.dll",
     ];
 

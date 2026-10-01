@@ -89,23 +89,25 @@ public static class EdgeDock
     }
 
     /// <summary>
-    /// The docked panel's rectangle: against its edge, centred at the offset along it, the size capped to the screen and
-    /// kept on screen.
+    /// The docked panel's rectangle: <paramref name="inset"/> in from its edge (beside the arrow, which stays visible),
+    /// centred at the offset along it, the size capped to the screen and kept on screen.
     /// </summary>
-    public static OverlayRect Panel(OverlayEdge edge, double offset, double width, double height, double screenWidth, double screenHeight)
+    public static OverlayRect Panel(OverlayEdge edge, double offset, double width, double height, double screenWidth, double screenHeight, double inset = 0)
     {
-        width = Math.Min(width, screenWidth);
-        height = Math.Min(height, screenHeight);
+        var sideEdge = edge is OverlayEdge.Left or OverlayEdge.Right;
+        inset = Clamp(inset, 0, (sideEdge ? screenWidth : screenHeight) / 2);
+        width = Math.Min(width, screenWidth - (sideEdge ? inset : 0));
+        height = Math.Min(height, screenHeight - (sideEdge ? 0 : inset));
         var horizontal = edge is OverlayEdge.Top or OverlayEdge.Bottom;
         var along = horizontal
             ? Clamp(offset * screenWidth - width / 2, 0, screenWidth - width)
             : Clamp(offset * screenHeight - height / 2, 0, screenHeight - height);
         return edge switch
         {
-            OverlayEdge.Left => new OverlayRect(0, along, width, height),
-            OverlayEdge.Right => new OverlayRect(screenWidth - width, along, width, height),
-            OverlayEdge.Top => new OverlayRect(along, 0, width, height),
-            _ => new OverlayRect(along, screenHeight - height, width, height),
+            OverlayEdge.Left => new OverlayRect(inset, along, width, height),
+            OverlayEdge.Right => new OverlayRect(screenWidth - inset - width, along, width, height),
+            OverlayEdge.Top => new OverlayRect(along, inset, width, height),
+            _ => new OverlayRect(along, screenHeight - inset - height, width, height),
         };
     }
 

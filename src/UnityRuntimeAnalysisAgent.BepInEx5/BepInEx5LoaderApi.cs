@@ -9,11 +9,13 @@ using BepInEx.Logging;
 using UnityEngine;
 using UnityRuntimeAnalysisAgent.Core.Abstractions;
 using UnityRuntimeAnalysisAgent.Core.Hosting;
+using UnityRuntimeAnalysisAgent.Core.Overlay;
 
 namespace UnityRuntimeAnalysisAgent.BepInEx5;
 
-/// <summary>Core's view of BepInEx 5: its config file, logging, plugins, keyboard shortcuts and plugin hosting.</summary>
-public sealed class BepInEx5LoaderApi : ILoaderApi, IDisposable
+/// <summary>Core's view of BepInEx 5: its config file (read and, for the overlay's arrangement, written), logging,
+/// plugins, keyboard shortcuts and plugin hosting.</summary>
+public sealed class BepInEx5LoaderApi : ILoaderApi, IConfigWriter, IDisposable
 {
     private readonly ConfigFile _configFile;
     private readonly Dictionary<string, ConfigEntryBase> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -53,6 +55,23 @@ public sealed class BepInEx5LoaderApi : ILoaderApi, IDisposable
     /// <inheritdoc />
     public bool IsShortcutPressed(string configKey) =>
         _entries.TryGetValue(configKey, out var entry) && entry is ConfigEntry<KeyboardShortcut> shortcut && shortcut.Value.IsDown();
+
+    /// <inheritdoc />
+    public void Set(string key, string value)
+    {
+        // BepInEx saves the file when a value is set (SaveOnConfigSet); an unknown key or bad value is ignored.
+        if (_entries.TryGetValue(key, out var entry))
+        {
+            try
+            {
+                entry.SetSerializedValue(value);
+            }
+            catch (Exception)
+            {
+                // A value the entry can't take: the setting keeps its current value.
+            }
+        }
+    }
 
     /// <inheritdoc />
     public IAgentLogger CreateLog(string source) => new SourceLogger(BepInEx.Logging.Logger.CreateLogSource(source));

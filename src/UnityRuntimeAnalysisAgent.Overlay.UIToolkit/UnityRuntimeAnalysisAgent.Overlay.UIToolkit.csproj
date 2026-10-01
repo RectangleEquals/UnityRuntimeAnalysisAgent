@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The overlay's UI Toolkit renderer, compiled against the first Unity 2021.3 release's modules (UI Toolkit's runtime
+       floor for the overlay). The agent loads it by name only when it picks UI Toolkit, so games without UI Toolkit never
+       load it. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>UnityRuntimeAnalysisAgent.Overlay.UIToolkit</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Unity\UnityRuntimeAnalysisAgent.Unity.csproj" />
+    <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Overlay\UnityRuntimeAnalysisAgent.Overlay.csproj" />
+    <PackageReference Include="UnityEngine.Modules" VersionOverride="2021.3.0" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

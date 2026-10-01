@@ -18,7 +18,7 @@
 - The BepInEx 5 plugin: the agent now runs inside games. Unity bindings (a hidden main-thread pump host that survives
   the game destroying it; reflection binders for optional modules), the loader bridge (settings, logs, plugins,
   shortcuts), every setting bound with its default and description, `agent.healthCheck`, and the release package
-  (`dist/`: the six plugin assemblies, a verified `package.json` and the zip, byte-reproducible).
+  (`dist/`: the plugin assemblies, a verified `package.json` and the zip, byte-reproducible).
   Verified with BepInEx 5.4.23.5 in a Unity 6 Mono player ([compatibility](docs/compatibility.md)).
 - The data model: exact code references (anchors: module version id + metadata token, the same ones static tools
   read; `code.resolve` for exploratory lookup by name), live object handles (`handles.list`, `handles.release`,
@@ -154,6 +154,22 @@
   published as a GitHub release (`overlay-assets-r<N>`), locked by `assets/overlay/release.json`, and downloaded and
   verified by the build when missing. `tools/OverlayAssets` rebuilds and releases them
   ([README](tools/OverlayAssets/README.md)).
+- The overlay is drawn: the arrow on its screen edge (status tint, a badge counting prompts and notifications, drag to
+  any edge), the expanded panel with its tabs, E-STOP and the selected tab's view, and notification and prompt cards.
+  Three renderers, tried in order (or forced with `Overlay.Renderer`), with the reasons for the choice logged: UI
+  Toolkit (Unity 2021.3+, not 2023.2; real UI Toolkit elements and controls with the theme applied inline, which checks
+  that the bundle's theme really applies and otherwise hands over to uGUI), styled uGUI (built in code and laid out by
+  the overlay's flex engine, with generated rounded sprites and the bundle's fonts), and a small IMGUI emergency box
+  (status, why the full overlay isn't available, E-STOP). Rows in lists and tables keep their height, scroll areas clip
+  their content, and text colours come from the theme, so the overlay stays legible over any game. The overlay's
+  objects are rebuilt if the game destroys them; failures never reach the game. Hotkeys (`Overlay.ToggleKey`,
+  `Overlay.HideKey`, `Overlay.PickKey`, `Overlay.EStopKey`), the gamepad chord (`Overlay.GamepadToggle`, Input System
+  or Input Manager), `Overlay.ForceCursorWhenExpanded`, `Overlay.BlockUiClicks` (with UI Toolkit, an invisible uGUI
+  blocker under the overlay) and `Overlay.BlockWorldInput` (opt-in; the Input Manager's mouse-button queries) now
+  work. The arrow's edge and position and whether the panel is docked are saved to the configuration. The UI Toolkit
+  renderer ships as its own assembly, `UnityRuntimeAnalysisAgent.Overlay.UIToolkit.dll`, loaded only when it's used.
+  The docked panel sits beside the arrow, never over it. Overlay assets `overlay-assets-r2`: fonts are imported with a
+  pixel of padding around each glyph, so the pixel font stays crisp in uGUI.
 - The package is byte-identical from any checkout: Release builds map source paths to a fixed root (here and in the
   protocol package, now `protocol-v0.1.0-dev.6`), and generated JSON is written with the same line endings as a
   checkout.

@@ -5,8 +5,8 @@
     "2021.3": {
       "family": "2021.3",
       "file": "2021.3.bundle",
-      "sha256": "f23addea0dd02594d7c412e7c851676cb1ff8adf2f505bb98d01bab3c1039634",
-      "bytes": 742757,
+      "sha256": "bd45e32ef9248af69def5f8f16417852652cb4578b834e2b5b1a68924a7144e4",
+      "bytes": 742758,
       "builtWith": "2021.3.45f2",
       "assets": [
         "Fonts/JetBrainsMono-Regular.ttf",
@@ -25,8 +25,8 @@
     "6000.3": {
       "family": "6000.3",
       "file": "6000.3.bundle",
-      "sha256": "8b4776ed52fff080d94bcaca0ba3be53e1ba2516a7b3552984e70cedebce8735",
-      "bytes": 751873,
+      "sha256": "f4629d623085268c8f0f5b135a737e43352557b772323460e80ca92f6fe2638b",
+      "bytes": 751874,
       "builtWith": "6000.3.9f1",
       "assets": [
         "Fonts/JetBrainsMono-Regular.ttf",
