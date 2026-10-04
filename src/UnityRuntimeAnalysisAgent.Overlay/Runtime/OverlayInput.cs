@@ -57,6 +57,28 @@ public sealed class OverlayInput : IDisposable
     /// <summary>The gamepad buttons held this frame (names as in <c>Overlay.GamepadToggle</c>).</summary>
     public IReadOnlyCollection<string> HeldButtons { get; private set; } = Array.Empty<string>();
 
+    /// <summary>
+    /// The characters typed this frame (the Input Manager's <c>inputString</c>), or null where the game has no Input
+    /// Manager. Used for the prompts' text fields.
+    /// </summary>
+    public string? TypedText()
+    {
+        if (!_legacyPointer)
+        {
+            return null;
+        }
+
+        try
+        {
+            return LegacyInput!.GetProperty("inputString", BindingFlags.Public | BindingFlags.Static)?.GetValue(null, null) as string;
+        }
+        catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException)
+        {
+            _legacyPointer = false; // the project switched the Input Manager off
+            return null;
+        }
+    }
+
     /// <summary>Called every frame: hover state for the patch, and the gamepad chord (which toggles the overlay).</summary>
     public void Frame(IReadOnlyList<Rect> occupied)
     {

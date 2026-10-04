@@ -36,6 +36,8 @@ public sealed class OverlayCommands
             }
         });
         Register("prompt.answer", args => _controller.Prompts.Answer(Text(args, "id"), Text(args, "button")));
+        Register("prompt.sendText", _ => _controller.Prompts.SendText());
+        Register("prompt.cancelText", _ => _controller.Prompts.CancelText());
         Register("toast.dismiss", args =>
         {
             if (args["id"] is JsonNumber id)

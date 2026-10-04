@@ -72,6 +72,9 @@ public sealed class ToastQueue
     /// <summary>The most toasts shown at once.</summary>
     public const int MaxVisible = 5;
 
+    /// <summary>How many notifications the history keeps (the expanded overlay lists them).</summary>
+    public const int HistorySize = 200;
+
     /// <summary>The throttle window.</summary>
     public const double WindowSeconds = 10;
 
@@ -80,6 +83,7 @@ public sealed class ToastQueue
 
     private readonly Func<ToastFilter> _filter;
     private readonly List<Toast> _visible = new();
+    private readonly List<Toast> _history = new();
     private readonly Queue<double> _recent = new();
     private long _nextId = 1;
 
@@ -91,6 +95,9 @@ public sealed class ToastQueue
 
     /// <summary>The toasts on screen, oldest first.</summary>
     public IReadOnlyList<Toast> Visible => _visible;
+
+    /// <summary>Every notification shown (newest last, at most <see cref="HistorySize"/>), so a missed one can be read later.</summary>
+    public IReadOnlyList<Toast> History => _history;
 
     /// <summary>Ordinary toasts not shown because of the throttle, since the last summary.</summary>
     public int Suppressed { get; private set; }
@@ -127,7 +134,14 @@ public sealed class ToastQueue
             _recent.Enqueue(now);
         }
 
-        _visible.Add(new Toast(_nextId++, text, level, source, now, durationSeconds));
+        var toast = new Toast(_nextId++, text, level, source, now, durationSeconds);
+        _visible.Add(toast);
+        _history.Add(toast);
+        if (_history.Count > HistorySize)
+        {
+            _history.RemoveAt(0);
+        }
+
         while (_visible.Count > MaxVisible)
         {
             _visible.RemoveAt(_visible.FindIndex(t => t.Level is ToastLevel.Info or ToastLevel.Success) is var i and >= 0 ? i : 0);

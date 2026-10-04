@@ -2,7 +2,7 @@
 
 ## 0.1.0-dev (unreleased)
 - Repository and toolchain scaffolding: solution, projects, central package management.
-- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.6`).
+- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.7`).
 - Transport, handshake and discovery: framed connections over a named pipe (restricted to the current user where the
   runtime allows) or a loopback TCP fallback, the token-authenticated `hello` handshake, `ping`, `agent.info`,
   `agent.capabilities`, `cancel` and event subscriptions, and an atomically written discovery file.
@@ -173,3 +173,10 @@
 - The package is byte-identical from any checkout: Release builds map source paths to a fixed root (here and in the
   protocol package, now `protocol-v0.1.0-dev.6`), and generated JSON is written with the same line endings as a
   checkout.
+- Clients can talk to the player in the game: `overlay.notify` shows a notification, and `overlay.prompt` asks a
+  question with answer buttons, answered through the `overlay.promptResult` event. A prompt's `textButton` (protocol
+  `0.1.0-dev.7`) opens a text field on its card: the player types the answer (Enter or Send) and the event carries
+  the `text`. Prompt cards list their answers one per line at the card's full width, and the typing caret blinks
+  beside the text. Notification cards docked at the bottom edge now stack upwards from the arrow (UI Toolkit; they
+  used to grow below the screen). The overlay keeps the last 200 notifications, and the expanded panel's Activity
+  tab lists them, with every open question answerable there too.

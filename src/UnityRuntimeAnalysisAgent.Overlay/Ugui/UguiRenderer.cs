@@ -153,7 +153,7 @@ public sealed class UguiRenderer : IOverlayRenderer
     // Everything that changes what's drawn, cheaply: redraw only when it changes.
     private string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
-        c.EStop.Engaged, string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)),
+        c.EStop.Engaged, string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + (c.Prompts.Editing is null ? string.Empty : PromptCard.CaretVisible ? "|on" : "|off"),
         _presenter?.Hovered, _presenter?.Pressed, _presenter?.Focused);
 
     private void Rebuild(OverlayController controller)
@@ -313,26 +313,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         stack.Style["width"] = "360";
         foreach (var prompt in controller.Prompts.Pending)
         {
-            var card = new ViewNode { Type = NodeType.Panel, Id = "prompt-" + prompt.Id, Classes = { "card" } };
-            card.Style["margin-top"] = "$space.2";
-            if (prompt.Title is { } title)
-            {
-                card.Children.Add(new ViewNode { Type = NodeType.Text, Text = Escape(title), Classes = { "heading" } });
-            }
-
-            card.Children.Add(new ViewNode { Type = NodeType.Text, Text = Escape(prompt.Message) });
-            var buttons = new ViewNode { Type = NodeType.Stack };
-            buttons.Style["flex-direction"] = "row";
-            buttons.Style["margin-top"] = "$space.2";
-            foreach (var label in prompt.Buttons)
-            {
-                var b = new ViewNode { Type = NodeType.Button, Text = Escape(label), Command = "prompt.answer", Args = new JsonObject { { "id", new JsonString(prompt.Id) }, { "button", new JsonString(label) } } };
-                b.Style["margin-right"] = "$space.2";
-                buttons.Children.Add(b);
-            }
-
-            card.Children.Add(buttons);
-            stack.Children.Add(card);
+            stack.Children.Add(PromptCard.Build(prompt, controller.Prompts, Escape));
         }
 
         foreach (var toast in controller.Toasts.Visible)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -143,6 +144,14 @@ public sealed class OverlayController
         Toasts.Add("E-STOP engaged: mode ReadOnly, patches reverted, instrumentation removed, jobs and rules cancelled.", ToastLevel.Error, "agent", _lastNow, 8);
     }
 
+    /// <summary>A toast from the client (<c>overlay.notify</c>; main thread). Returns whether it's shown.</summary>
+    public bool Notify(string text, ToastLevel level, double seconds) => Toasts.Add(text, level, "client", _lastNow, seconds);
+
+    /// <summary>A question from the client (<c>overlay.prompt</c>; main thread).</summary>
+    /// <exception cref="ArgumentException">A prompt with that id is waiting, or the buttons are invalid.</exception>
+    public Prompt ShowPrompt(string id, string? title, string message, IReadOnlyList<string> buttons, int? timeoutMs, string? attachProbe, string? textButton) =>
+        Prompts.Show(id, title, message, buttons, _lastNow, timeoutMs, attachProbe, textButton);
+
     /// <summary>Every frame (main thread), with unscaled realtime in seconds.</summary>
     public void Tick(double now)
     {
@@ -152,6 +161,9 @@ public sealed class OverlayController
         Highlights.Tick(now);
         Views.Tick(now);
     }
+
+    private static string FormatAgo(double seconds) => seconds < 60 ? $"{seconds:0}s ago"
+        : seconds < 3600 ? $"{seconds / 60:0}m ago" : $"{seconds / 3600:0.#}h ago";
 
     // The overlay's own state as the views see it (under "overlay").
     private JsonObject LocalState()
@@ -197,7 +209,35 @@ public sealed class OverlayController
                     { "title", p.Title is { } title ? new JsonString(title) : JsonNull.Instance },
                     { "message", new JsonString(p.Message) },
                     { "buttons", new JsonArray(p.Buttons.Select(b => (JsonValue)new JsonString(b))) },
+                    { "textButton", p.TextButton is { } tb ? new JsonString(tb) : JsonNull.Instance },
                     { "remainingMs", p.Remaining(now) is { } r ? new JsonNumber((long)(r * 1000)) : JsonNull.Instance },
+                })) },
+
+            // The pending prompts as list rows (views can't nest lists): a question row, then a row per answer.
+            { "promptRows", new JsonArray(Prompts.Pending.SelectMany(p => new[]
+                {
+                    (JsonValue)new JsonObject
+                    {
+                        { "kind", new JsonString("question") },
+                        { "text", new JsonString((p.Title is { } t ? t + ": " : string.Empty) + p.Message) },
+                    },
+                }.Concat(p.Buttons.Select(b => (JsonValue)new JsonObject
+                {
+                    { "kind", new JsonString("answer") },
+                    { "id", new JsonString(p.Id) },
+                    { "button", new JsonString(b) },
+                })))) },
+            { "typing", Prompts.Editing is { } editing ? new JsonObject
+                {
+                    { "prompt", new JsonString(editing) },
+                    { "draft", new JsonString(Prompts.Draft) },
+                    { "caret", new JsonString(Environment.TickCount / 530 % 2 == 0 ? "|" : string.Empty) },
+                } : JsonNull.Instance },
+            { "notifications", new JsonArray(Toasts.History.Reverse().Select(t => (JsonValue)new JsonObject
+                {
+                    { "time", new JsonString(FormatAgo(now - t.ShownAt)) },
+                    { "level", new JsonString(t.Level.ToString().ToLowerInvariant()) },
+                    { "text", new JsonString(t.Count > 1 ? $"{t.Text} (×{t.Count})" : t.Text) },
                 })) },
         };
     }

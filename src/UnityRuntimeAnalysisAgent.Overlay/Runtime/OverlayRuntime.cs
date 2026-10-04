@@ -250,6 +250,11 @@ public sealed class OverlayRuntime : IDisposable
             }
 
             Cursor();
+            if (_controller.Prompts.Editing is not null)
+            {
+                _controller.Prompts.Type(_input.TypedText());
+            }
+
             _renderer?.Update();
             var occupied = _renderer?.Occupied ?? Array.Empty<Rect>();
             _input.Frame(occupied);

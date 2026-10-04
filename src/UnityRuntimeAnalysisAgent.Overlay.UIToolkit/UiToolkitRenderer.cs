@@ -230,7 +230,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
     private static string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
-        c.EStop.Engaged, string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)));
+        c.EStop.Engaged, string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + (c.Prompts.Editing is null ? string.Empty : PromptCard.CaretVisible ? "|on" : "|off"));
 
     private void Rebuild(OverlayController controller, double width, double height)
     {
@@ -276,10 +276,19 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         if (cards is not null)
         {
             var x = model.Edge == OverlayEdge.Right ? arrow.X - 368 : model.Edge == OverlayEdge.Left ? arrow.X + arrow.Width + 8 : Math.Max(0, Math.Min(arrow.X, width - 360));
-            var y = model.Edge == OverlayEdge.Bottom ? Math.Max(0, arrow.Y - 8) : model.Edge == OverlayEdge.Top ? arrow.Y + arrow.Height + 8 : Math.Max(0, Math.Min(arrow.Y, height - 200));
             cards.style.position = UnityEngine.UIElements.Position.Absolute;
             cards.style.left = (float)x;
-            cards.style.top = (float)y;
+            if (model.Edge == OverlayEdge.Bottom)
+            {
+                // Above the arrow, anchored by its bottom: new cards appear nearest the arrow and push older ones up
+                // (anchored by its top, the stack grew down off the screen).
+                cards.style.bottom = (float)Math.Max(0, height - (arrow.Y - 8));
+            }
+            else
+            {
+                cards.style.top = (float)(model.Edge == OverlayEdge.Top ? arrow.Y + arrow.Height + 8 : Math.Max(0, Math.Min(arrow.Y, height - 200)));
+            }
+
             cards.style.width = 360;
             _layer.Add(cards);
         }
@@ -379,26 +388,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         var stack = new ViewNode { Type = NodeType.Stack, Id = "cards" };
         foreach (var prompt in controller.Prompts.Pending)
         {
-            var card = new ViewNode { Type = NodeType.Panel, Id = "prompt-" + prompt.Id, Classes = { "card" } };
-            card.Style["margin-top"] = "$space.2";
-            if (prompt.Title is { } title)
-            {
-                card.Children.Add(new ViewNode { Type = NodeType.Text, Text = Escape(title), Classes = { "heading" } });
-            }
-
-            card.Children.Add(new ViewNode { Type = NodeType.Text, Text = Escape(prompt.Message) });
-            var buttons = new ViewNode { Type = NodeType.Stack };
-            buttons.Style["flex-direction"] = "row";
-            buttons.Style["margin-top"] = "$space.2";
-            foreach (var label in prompt.Buttons)
-            {
-                var b = new ViewNode { Type = NodeType.Button, Text = Escape(label), Command = "prompt.answer", Args = new JsonObject { { "id", new JsonString(prompt.Id) }, { "button", new JsonString(label) } } };
-                b.Style["margin-right"] = "$space.2";
-                buttons.Children.Add(b);
-            }
-
-            card.Children.Add(buttons);
-            stack.Children.Add(card);
+            stack.Children.Add(PromptCard.Build(prompt, controller.Prompts, Escape));
         }
 
         foreach (var toast in controller.Toasts.Visible)

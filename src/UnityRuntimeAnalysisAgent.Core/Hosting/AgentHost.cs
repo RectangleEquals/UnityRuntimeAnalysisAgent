@@ -195,6 +195,7 @@ public sealed class AgentHost : IDisposable
         if (overlaySettings.Enabled)
         {
             Overlay = CreateOverlay(overlaySettings, control);
+            Dispatcher.Register(new OverlayService(Overlay));
         }
     }
 
@@ -617,7 +618,7 @@ public sealed class AgentHost : IDisposable
             Events.EmittedKinds.Add(kind);
         }
 
-        overlay.Prompts.Answered += (prompt, button) => Events.Publish(EventKinds.OverlayPromptResult, new PromptResultEventParams { Id = prompt.Id, Button = button });
+        overlay.Prompts.Answered += (prompt, button, text) => Events.Publish(EventKinds.OverlayPromptResult, new PromptResultEventParams { Id = prompt.Id, Button = button, Text = text });
         Action<FrameTime> tick = clock => overlay.Tick(clock.Realtime);
         Pump.Ticked += tick;
         RegisterCleanup("stop the overlay's model", () => Pump.Ticked -= tick);
