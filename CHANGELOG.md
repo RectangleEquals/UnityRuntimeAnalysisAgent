@@ -180,3 +180,31 @@
   beside the text. Notification cards docked at the bottom edge now stack upwards from the arrow (UI Toolkit; they
   used to grow below the screen). The overlay keeps the last 200 notifications, and the expanded panel's Activity
   tab lists them, with every open question answerable there too.
+- The overlay's nine tabs have views:
+  - **Status:** versions, the mode, connected clients (messages, bytes, dropped events), FPS with a sparkline, memory,
+    pump health and active counts. **Copy report** puts the Markdown report on the clipboard; **Run the health
+    check**.
+  - **Activity:** the request feed (newest first, mutations marked ●, filters all / mutating / errors), jobs with
+    progress and Cancel, questions and notifications.
+  - **Inspector:** the selection's members, back/forward, the lock, **Send to client** (names it `pickN`), and the
+    scenes and their hierarchy (click to select).
+  - **Pinned:** variables with live values, watches with Remove.
+  - **Instrumentation:** hooks, watches, live patch sets (Revert) and rules (Cancel), and **Clear all
+    instrumentation**.
+  - **Mods & Tests:** plugins and mods, and the last test run (totals and each result, also in the Copy report).
+  - **Logs:** newest first, by level.
+  - **Control:** E-STOP, pause/resume, step 1/10 frames, speed presets, audio pause, run in the background, disconnect
+    clients, lower the mode. The overlay can only ever lower the mode.
+  - **Settings:** every `Overlay.*` setting, toggled, cycled, stepped or edited (by typing) and saved to the
+    configuration.
+
+  Tab buttons call agent methods as audited overlay actions; failures show as notifications. The arrow's tint now
+  follows the connection: idle, connected, busy while a client is exchanging messages or a question is open, E-STOP.
+- Overlay readability:
+  - Notifications and questions in the Activity tab wrap onto as many lines as they need instead of being cut off.
+    Lists can size rows to their content (`"wrapRows": true` in a view file).
+  - A notification stays on screen at least long enough to read it whole, however short a duration the client asks
+    for.
+  - Buttons with an icon size to the icon and the label together (the icon no longer covers the text), in the UI
+    Toolkit and uGUI renderers. Section headings no longer shrink under the lists when the panel is short.
+  - Status shows frame times as `mean ms (p95 · max)` instead of the raw value.

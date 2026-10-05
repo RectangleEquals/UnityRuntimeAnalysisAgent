@@ -1,0 +1,39 @@
+{
+  "root": {
+    "type": "stack",
+    "children": [
+      { "type": "text", "class": "heading", "text": "Variables" },
+      { "type": "text", "class": "dim", "text": "None yet. 'Send to client' in the Inspector, a pick, or the client adds them.", "visible": "!varRows" },
+      {
+        "type": "table",
+        "id": "vars",
+        "items": "varRows",
+        "visible": "varRows",
+        "style": { "height": "200px" },
+        "columns": [
+          { "header": "Name", "bind": "name", "width": "30%" },
+          { "header": "Kind", "bind": "kind", "width": "15%" },
+          { "header": "Value", "bind": "value" }
+        ]
+      },
+      { "type": "separator" },
+      { "type": "text", "class": "heading", "text": "Watches" },
+      { "type": "text", "class": "dim", "text": "No watches.", "visible": "!watches.items" },
+      {
+        "type": "list",
+        "id": "watches",
+        "items": "watches.items",
+        "visible": "watches.items",
+        "style": { "height": "140px" },
+        "template": {
+          "type": "stack",
+          "class": "row",
+          "children": [
+            { "type": "text", "class": "value", "text": "{@.watchId} · {@.path} · {@.changes} changes · {@.owner}", "style": { "flex-grow": "1" } },
+            { "type": "button", "icon": "trash", "text": "Remove", "command": "agent.call", "args": { "method": "watch.remove", "params": { "watchId": "{@.watchId}" }, "done": "Watch removed." } }
+          ]
+        }
+      }
+    ]
+  }
+}

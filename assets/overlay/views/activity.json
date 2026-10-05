@@ -8,7 +8,8 @@
         "id": "prompt-rows",
         "items": "overlay.promptRows",
         "visible": "overlay.promptRows",
-        "style": { "height": "240px" },
+        "wrapRows": true,
+        "style": { "height": "160px" },
         "template": {
           "type": "stack",
           "children": [
@@ -16,8 +17,7 @@
               "type": "text",
               "class": "label",
               "text": "{@.text}",
-              "visible": "@.kind==question",
-              "style": { "white-space": "nowrap", "text-overflow": "ellipsis" }
+              "visible": "@.kind==question"
             },
             {
               "type": "button",
@@ -52,13 +52,58 @@
           }
         ]
       },
+      { "type": "text", "class": "heading", "text": "Jobs", "visible": "jobRows" },
+      {
+        "type": "list",
+        "id": "jobs",
+        "items": "jobRows",
+        "visible": "jobRows",
+        "style": { "height": "72px" },
+        "template": {
+          "type": "stack",
+          "class": "row",
+          "children": [
+            { "type": "text", "class": "value", "text": "{@.text}", "style": { "width": "55%" } },
+            { "type": "progress", "bind": "@.progress", "range": [0, 1], "style": { "flex-grow": "1", "margin": "0 $space.2" } },
+            { "type": "button", "text": "Cancel", "icon": "x", "visible": "@.running", "command": "agent.call", "args": { "method": "job.cancel", "params": { "jobId": "{@.jobId}" }, "done": "Job cancelled." } }
+          ]
+        }
+      },
+      {
+        "type": "stack",
+        "class": "row",
+        "style": { "flex-shrink": "0" },
+        "children": [
+          { "type": "text", "class": "heading", "text": "Requests", "style": { "flex-grow": "1" } },
+          { "type": "button", "text": "All", "command": "activity.filter", "args": { "filter": "all" }, "style": { "flex-shrink": "0" } },
+          { "type": "button", "text": "Mutating", "icon": "warning", "command": "activity.filter", "args": { "filter": "mutating" }, "tooltip": "Only requests that changed the game (● in the list)", "style": { "flex-shrink": "0" } },
+          { "type": "button", "text": "Errors", "command": "activity.filter", "args": { "filter": "errors" }, "style": { "flex-shrink": "0" } }
+        ]
+      },
+      { "type": "text", "class": "dim", "text": "No requests yet.", "visible": "!rows" },
+      {
+        "type": "list",
+        "id": "requests",
+        "items": "rows",
+        "style": { "height": "200px" },
+        "template": { "type": "text", "class": "value", "text": "{@.text}", "style": { "white-space": "nowrap", "text-overflow": "ellipsis" } }
+      },
       { "type": "text", "class": "heading", "text": "Notifications" },
       { "type": "text", "class": "dim", "text": "None yet.", "visible": "!overlay.notifications" },
       {
         "type": "list",
         "id": "notifications",
         "items": "overlay.notifications",
-        "template": { "type": "text", "text": "{@.time}   {@.text}" }
+        "wrapRows": true,
+        "style": { "height": "160px" },
+        "template": {
+          "type": "stack",
+          "style": { "padding": "$space.1 0" },
+          "children": [
+            { "type": "text", "class": "dim", "text": "{@.time}" },
+            { "type": "text", "text": "{@.text}" }
+          ]
+        }
       }
     ]
   }

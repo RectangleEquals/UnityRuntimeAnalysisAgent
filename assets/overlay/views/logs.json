@@ -1,0 +1,27 @@
+{
+  "root": {
+    "type": "stack",
+    "children": [
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "text", "class": "heading", "text": "Log", "style": { "flex-grow": "1" } },
+          { "type": "button", "text": "Debug", "command": "logs.level", "args": { "level": "debug" } },
+          { "type": "button", "text": "Info", "command": "logs.level", "args": { "level": "info" } },
+          { "type": "button", "text": "Warnings", "icon": "warning", "command": "logs.level", "args": { "level": "warning" } },
+          { "type": "button", "text": "Errors", "icon": "warning-circle", "command": "logs.level", "args": { "level": "error" } }
+        ]
+      },
+      { "type": "text", "class": "dim", "text": "Newest first; Unity, the loader and the agent. {logs.dropped} dropped." },
+      { "type": "text", "class": "dim", "text": "Nothing at this level.", "visible": "!rows" },
+      {
+        "type": "list",
+        "id": "log",
+        "items": "rows",
+        "style": { "height": "420px" },
+        "template": { "type": "text", "class": "value", "text": "{@.text}", "style": { "white-space": "nowrap", "text-overflow": "ellipsis" } }
+      }
+    ]
+  }
+}

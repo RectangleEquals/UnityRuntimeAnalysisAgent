@@ -127,6 +127,12 @@ public sealed class ViewNode
     /// <summary>The items' path (List, Tree, Table, Dropdown choices).</summary>
     public string? Items { get; set; }
 
+    /// <summary>
+    /// List/Tree rows size to their content (wrapped text shows in full) instead of all taking the first row's height.
+    /// Every row is measured, so use it for short lists (notifications, history), not for thousands of rows.
+    /// </summary>
+    public bool WrapRows { get; set; }
+
     /// <summary>A Tree item's children path.</summary>
     public string? ChildrenPath { get; set; }
 

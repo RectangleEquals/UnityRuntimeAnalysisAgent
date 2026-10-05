@@ -24,6 +24,9 @@ public sealed class ReportClient
 
     /// <summary>Events dropped for it.</summary>
     public long DroppedEvents { get; set; }
+
+    /// <summary>When its last message came or went (the arrow's "busy" tint).</summary>
+    public DateTime LastActivityUtc { get; set; }
 }
 
 /// <summary>

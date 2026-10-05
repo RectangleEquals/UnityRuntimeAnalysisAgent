@@ -1,0 +1,32 @@
+{
+  "root": {
+    "type": "stack",
+    "children": [
+      { "type": "text", "class": "heading", "text": "Overlay settings" },
+      { "type": "text", "class": "dim", "text": "Saved to the agent's configuration file; most apply after the game restarts." },
+      {
+        "type": "list",
+        "id": "settings",
+        "items": "overlay.settings",
+        "style": { "height": "460px" },
+        "template": {
+          "type": "stack",
+          "class": "row",
+          "children": [
+            { "type": "text", "class": "label", "text": "{@.name}", "tooltip": "{@.description}", "style": { "width": "34%" } },
+            { "type": "text", "class": "value", "text": "{@.value}", "style": { "flex-grow": "1", "white-space": "nowrap", "text-overflow": "ellipsis" } },
+            { "type": "button", "text": "Toggle", "visible": "@.kind==bool", "command": "setting.toggle", "args": { "key": "{@.key}" } },
+            { "type": "button", "text": "Next", "visible": "@.kind==choice", "command": "setting.cycle", "args": { "key": "{@.key}" } },
+            { "type": "button", "text": "−", "visible": "@.kind==int", "command": "setting.step", "args": { "key": "{@.key}", "delta": -1 } },
+            { "type": "button", "text": "+", "visible": "@.kind==int", "command": "setting.step", "args": { "key": "{@.key}", "delta": 1 } },
+            { "type": "button", "text": "−", "visible": "@.kind==float", "command": "setting.step", "args": { "key": "{@.key}", "delta": -1 } },
+            { "type": "button", "text": "+", "visible": "@.kind==float", "command": "setting.step", "args": { "key": "{@.key}", "delta": 1 } },
+            { "type": "button", "text": "Edit…", "visible": "@.kind==text", "command": "setting.edit", "args": { "key": "{@.key}" } },
+            { "type": "button", "text": "Edit…", "visible": "@.kind==shortcut", "command": "setting.edit", "args": { "key": "{@.key}" } },
+            { "type": "button", "icon": "arrow-counter-clockwise", "text": "Reset", "visible": "@.changed", "command": "setting.reset", "args": { "key": "{@.key}" } }
+          ]
+        }
+      }
+    ]
+  }
+}

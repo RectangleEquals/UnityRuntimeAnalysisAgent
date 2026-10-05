@@ -57,7 +57,7 @@
     "tab": { "flex-shrink": "0", "white-space": "nowrap", "height": "$size.control", "padding": "0 $space.3", "color": "$color.text-dim", "font": "pixel", "font-size": "$size.body" },
     "tab:hover": { "color": "$color.text" },
     "tab:checked": { "color": "$color.accent", "border-color": "$color.accent" },
-    "heading": { "font": "heading", "font-size": "$size.large", "color": "$color.accent", "margin-bottom": "$space.2" },
+    "heading": { "font": "heading", "font-size": "$size.large", "color": "$color.accent", "margin-bottom": "$space.2", "flex-shrink": "0" },
     "label": { "color": "$color.text-dim", "font": "pixel", "font-size": "$size.body" },
     "value": { "color": "$color.text", "font": "mono", "font-size": "$size.body" },
     "dim": { "color": "$color.text-dim" },

@@ -1,0 +1,53 @@
+{
+  "root": {
+    "type": "stack",
+    "children": [
+      { "type": "button", "id": "estop", "class": "danger", "icon": "stop-circle", "text": "E-STOP: stop all automated activity", "command": "estop", "tooltip": "Lowers the mode, reverts live patches, removes instrumentation, cancels jobs and rules" },
+      { "type": "separator" },
+      { "type": "text", "class": "warn", "text": "The game is paused.", "visible": "time.paused" },
+      { "type": "text", "class": "label", "text": "Time · frame {time.frameCount} · scale {time.timeScale}" },
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "button", "icon": "pause", "text": "Pause", "command": "agent.call", "args": { "method": "time.pause" }, "visible": "!time.paused" },
+          { "type": "button", "icon": "play", "text": "Resume", "command": "agent.call", "args": { "method": "time.resume" }, "visible": "time.paused" },
+          { "type": "button", "text": "Step 1", "command": "agent.call", "args": { "method": "time.step", "params": { "frames": 1 } } },
+          { "type": "button", "text": "Step 10", "command": "agent.call", "args": { "method": "time.step", "params": { "frames": 10 } } }
+        ]
+      },
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "text", "class": "label", "text": "Speed", "style": { "margin-right": "$space.2" } },
+          { "type": "button", "text": "0.25×", "command": "agent.call", "args": { "method": "time.scale", "params": { "value": 0.25 } } },
+          { "type": "button", "text": "1×", "command": "agent.call", "args": { "method": "time.scale", "params": { "value": 1 } } },
+          { "type": "button", "text": "2×", "command": "agent.call", "args": { "method": "time.scale", "params": { "value": 2 } } },
+          { "type": "button", "text": "4×", "command": "agent.call", "args": { "method": "time.scale", "params": { "value": 4 } } }
+        ]
+      },
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "button", "text": "Pause / resume audio", "command": "audio.toggle" },
+          { "type": "button", "text": "Keep running in the background", "command": "agent.call", "args": { "method": "app.runInBackground", "params": { "value": true } }, "visible": "!app.runInBackground" },
+          { "type": "button", "text": "Pause in the background", "command": "agent.call", "args": { "method": "app.runInBackground", "params": { "value": false } }, "visible": "app.runInBackground" }
+        ]
+      },
+      { "type": "separator" },
+      { "type": "text", "class": "label", "text": "Clients and mode (now {overlay.mode})" },
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "button", "icon": "plug", "text": "Disconnect clients", "command": "client.disconnect", "visible": "overlay.connected" },
+          { "type": "button", "text": "Lower to ReadOnly+Load", "command": "agent.call", "args": { "method": "agent.setMode", "params": { "mode": "ReadOnly+Load" }, "done": "Mode lowered to ReadOnly+Load." }, "visible": "overlay.mode == Full" },
+          { "type": "button", "text": "Lower to ReadOnly", "command": "agent.call", "args": { "method": "agent.setMode", "params": { "mode": "ReadOnly" }, "done": "Mode lowered to ReadOnly." }, "visible": "overlay.mode != ReadOnly" }
+        ]
+      },
+      { "type": "text", "class": "dim", "text": "The overlay can only lower the mode; raising it needs the client and the user's consent." }
+    ]
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "root": {
+    "type": "stack",
+    "children": [
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "button", "id": "back", "icon": "arrow-counter-clockwise", "text": "Back", "command": "inspector.back", "visible": "canBack" },
+          { "type": "button", "id": "forward", "icon": "arrow-clockwise", "text": "Forward", "command": "inspector.forward", "visible": "canForward" },
+          { "type": "button", "id": "locked", "icon": "lock", "text": "Locked", "command": "inspector.lock", "visible": "locked", "tooltip": "Read-only. Unlocking needs Full mode" },
+          { "type": "button", "id": "unlocked", "icon": "lock-open", "text": "Unlocked", "command": "inspector.lock", "visible": "!locked" },
+          { "type": "button", "id": "send", "icon": "export", "text": "Send to client", "command": "inspector.send", "tooltip": "Names the selection (pick1, pick2…) so the client can refer to it" }
+        ]
+      },
+      { "type": "text", "class": "heading", "text": "{selectionLabel}" },
+      { "type": "text", "class": "dim", "text": "{selection.locator}", "visible": "selection.locator" },
+      { "type": "text", "class": "dim", "text": "Pick something in the hierarchy below.", "visible": "!members" },
+      {
+        "type": "table",
+        "id": "members",
+        "items": "members",
+        "visible": "members",
+        "style": { "height": "180px" },
+        "columns": [
+          { "header": "Member", "bind": "name", "width": "35%" },
+          { "header": "Value", "bind": "value" }
+        ]
+      },
+      { "type": "separator" },
+      { "type": "text", "class": "label", "text": "Scenes" },
+      {
+        "type": "list",
+        "id": "scenes",
+        "items": "scenes.items",
+        "style": { "height": "60px" },
+        "command": "inspector.scene",
+        "args": { "scene": "{@.name}" },
+        "template": { "type": "text", "class": "value", "text": "{@.name} · {@.rootCount} roots" }
+      },
+      { "type": "text", "class": "label", "text": "Hierarchy" },
+      {
+        "type": "tree",
+        "id": "hierarchy",
+        "items": "tree.items",
+        "childrenPath": "children",
+        "style": { "height": "220px" },
+        "command": "inspector.select",
+        "args": { "h": "{@.h}", "label": "{@.path}" },
+        "template": { "type": "text", "class": "value", "text": "{@.name}" }
+      }
+    ]
+  }
+}

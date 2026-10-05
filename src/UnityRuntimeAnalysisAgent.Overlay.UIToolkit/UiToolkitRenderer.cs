@@ -230,7 +230,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
     private static string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
-        c.EStop.Engaged, string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + (c.Prompts.Editing is null ? string.Empty : PromptCard.CaretVisible ? "|on" : "|off"));
+        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + (c.Prompts.Editing is null ? string.Empty : PromptCard.CaretVisible ? "|on" : "|off"));
 
     private void Rebuild(OverlayController controller, double width, double height)
     {
@@ -506,6 +506,20 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             iconElement.style.backgroundImage = new StyleBackground(Background.FromSprite(sprite));
             iconElement.style.unityBackgroundImageTintColor = Rgba(_context!.Theme.Resolve(node, state).Color);
             element.Insert(0, iconElement);
+
+            // A Button measures only its own text, so an icon inserted next to it spilled over its neighbours: the text
+            // moves into a child label, and the button sizes to icon + label.
+            if (element is Button button && button.text.Length > 0)
+            {
+                var label = new Label(button.text) { pickingMode = PickingMode.Ignore, enableRichText = false };
+                label.style.marginLeft = 4;
+                label.style.paddingLeft = label.style.paddingRight = label.style.paddingTop = label.style.paddingBottom = 0;
+                label.style.marginTop = label.style.marginBottom = label.style.marginRight = 0;
+                button.text = string.Empty;
+                button.style.flexDirection = FlexDirection.Row;
+                button.style.alignItems = Align.Center;
+                button.Add(label);
+            }
         }
 
         if (node.Type == NodeType.Progress && element.childCount > 0)
@@ -540,7 +554,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         return element;
     }
 
-    // A virtualised list or tree: UI Toolkit's ListView, rows from the template, fixed height, never shrinking.
+    // A virtualised list or tree: UI Toolkit's ListView, rows from the template, fixed height (or sized to their content
+    // with wrapRows), never shrinking.
     private VisualElement List(ViewNode node, string path, JsonValue? data, JsonValue? item)
     {
         var rows = new List<(JsonValue Item, int Depth, string Path)>();
@@ -583,6 +598,11 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         };
         list.style.flexGrow = 1;
         list.style.overflow = Overflow.Hidden;
+        if (node.WrapRows)
+        {
+            list.virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight; // rows size to their (wrapped) text
+        }
+
         return list;
     }
 
@@ -845,17 +865,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             return;
         }
 
-        var args = new JsonObject();
-        if (node.Args is not null)
-        {
-            foreach (var pair in node.Args)
-            {
-                args.Set(pair.Key, pair.Value is JsonString str && str.Value.StartsWith("{", StringComparison.Ordinal) && str.Value.EndsWith("}", StringComparison.Ordinal)
-                    ? Bindings.Value(str.Value.Substring(1, str.Value.Length - 2), data, item) ?? JsonNull.Instance
-                    : pair.Value);
-            }
-        }
-        else if (item is not null)
+        var args = node.Args is not null ? Bindings.ResolveArgs(node.Args, data, item) : new JsonObject();
+        if (node.Args is null && item is not null)
         {
             args.Set("item", item);
         }

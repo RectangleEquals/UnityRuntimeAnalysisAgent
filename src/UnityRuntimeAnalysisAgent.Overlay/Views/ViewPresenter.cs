@@ -100,7 +100,15 @@ public sealed class ViewPresenter
 
     // Scrolling nodes' laid-out heights (a list that grows or stretches is taller than any height it names) and the
     // heights the current pass built rows for.
+    /// <summary>An icon's size next to a label (Button, Badge, Toggle).</summary>
+    public const double IconSize = 16;
+
+    /// <summary>The room an icon takes left of its label: the icon and a gap.</summary>
+    public const double IconSpace = IconSize + 4;
+
     private readonly Dictionary<string, double> _viewports = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, double> _widths = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, double> _assumedWidths = new(StringComparer.Ordinal);
     private readonly Dictionary<string, double> _assumed = new(StringComparer.Ordinal);
 
     /// <summary>Creates the presenter.</summary>
@@ -147,6 +155,7 @@ public sealed class ViewPresenter
         for (var pass = 0; ; pass++)
         {
             _assumed.Clear();
+            _assumedWidths.Clear();
             root = Build(view.Root, view.Name, data, null);
             FlexLayout.Calculate(root.Layout, width, height);
             var changed = false;
@@ -156,6 +165,12 @@ public sealed class ViewPresenter
                 {
                     _viewports[node.Path] = node.Layout.Height;
                     changed |= Math.Abs(node.Layout.Height - assumed) > 0.5;
+                }
+
+                if (_assumedWidths.TryGetValue(node.Path, out var assumedWidth))
+                {
+                    _widths[node.Path] = node.Layout.Width;
+                    changed |= Math.Abs(node.Layout.Width - assumedWidth) > 0.5;
                 }
             }
 
@@ -195,6 +210,15 @@ public sealed class ViewPresenter
         if (render.Text is { Length: > 0 } text && node.Type is NodeType.Text or NodeType.Button or NodeType.Badge or NodeType.Toggle)
         {
             render.Layout.Measure = maxWidth => _measurer.Measure(text, style.Font, style.FontSize, maxWidth, style.NoWrap);
+            if (node.Icon is not null && node.Type is not NodeType.Text)
+            {
+                // The icon sits left of the text (IconSpace wide): the text is measured and drawn beside it, not under it.
+                render.Layout.Measure = maxWidth =>
+                {
+                    var (w, h) = _measurer.Measure(text, style.Font, style.FontSize, Math.Max(1, maxWidth - IconSpace), style.NoWrap);
+                    return (w + IconSpace, Math.Max(h, IconSize));
+                };
+            }
         }
 
         switch (node.Type)
@@ -251,6 +275,12 @@ public sealed class ViewPresenter
             return;
         }
 
+        if (node.WrapRows)
+        {
+            BuildWrappedRows(list, node, path, data, rows);
+            return;
+        }
+
         var rowHeight = RowHeight(node.Template, data, rows[0].Item);
         var viewport = Viewport(path, list.Style.Layout.Height);
         var first = (int)Math.Floor(ScrollOf(path) / rowHeight);
@@ -279,6 +309,72 @@ public sealed class ViewPresenter
 
         Spacer(list, Math.Max(0, rows.Count - first - count) * rowHeight);
         list.Value = new JsonNumber(rows.Count * rowHeight); // the content height, for clamping and the scrollbar
+    }
+
+    // Rows that size to their content (wrapRows): each is measured at the list's width, and the rows in view are found
+    // from the running heights.
+    private void BuildWrappedRows(RenderNode list, ViewNode node, string path, JsonValue? data, List<(JsonValue Item, int Depth, string Path)> rows)
+    {
+        var width = _widths.TryGetValue(path, out var known) ? known : 400;
+        _assumedWidths[path] = width;
+        var heights = rows.Select(r => RowHeight(node.Template!, data, r.Item, Math.Max(1, width - r.Depth * 12))).ToList();
+        var viewport = Viewport(path, list.Style.Layout.Height);
+        var scroll = ScrollOf(path);
+        double top = 0;
+        double above = 0;
+        double below = 0;
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var height = heights[i];
+            if (top + height <= scroll)
+            {
+                above += height;
+            }
+            else if (top >= scroll + viewport)
+            {
+                below += height;
+            }
+            else
+            {
+                if (list.Children.Count == 0)
+                {
+                    Spacer(list, above);
+                }
+
+                AddRow(list, node, data, rows[i]);
+            }
+
+            top += height;
+        }
+
+        if (list.Children.Count == 0)
+        {
+            Spacer(list, above);
+        }
+
+        Spacer(list, below);
+        list.Value = new JsonNumber(top);
+    }
+
+    private void AddRow(RenderNode list, ViewNode node, JsonValue? data, (JsonValue Item, int Depth, string Path) entry)
+    {
+        var (rowItem, depth, rowPath) = entry;
+        var row = Build(node.Template!, rowPath, data, rowItem);
+        row.Layout.Style.FlexShrink = 0; // rows keep their height (D-012)
+        if (depth > 0)
+        {
+            row.Layout.Style.Padding.Left = Length.Px(depth * 12);
+        }
+
+        if (row.Command is null && node.Command is not null)
+        {
+            row.Command = node.Command;
+            row.Args = node.Args is null ? new JsonObject { { "item", rowItem } } : ResolveArgs(node.Args, data, rowItem);
+            row.Interactive = true;
+        }
+
+        list.Children.Add(row);
+        list.Layout.Children.Add(row.Layout);
     }
 
     private void Flatten(List<(JsonValue, int, string)> rows, IEnumerable<JsonValue> items, ViewNode node, string path, int depth)
@@ -418,10 +514,10 @@ public sealed class ViewPresenter
         return rebuilt;
     }
 
-    private double RowHeight(ViewNode template, JsonValue? data, JsonValue item)
+    private double RowHeight(ViewNode template, JsonValue? data, JsonValue item, double width = 400)
     {
         var probe = Build(template, "probe", data, item);
-        FlexLayout.Calculate(probe.Layout, 400, double.NaN);
+        FlexLayout.Calculate(probe.Layout, width, double.NaN);
         return Math.Max(1, probe.Layout.Height);
     }
 
@@ -468,18 +564,7 @@ public sealed class ViewPresenter
         _ => Enumerable.Empty<JsonValue>(),
     };
 
-    private static JsonObject ResolveArgs(JsonObject args, JsonValue? data, JsonValue? item)
-    {
-        var resolved = new JsonObject();
-        foreach (var pair in args)
-        {
-            resolved.Set(pair.Key, pair.Value is JsonString s && s.Value.StartsWith("{", StringComparison.Ordinal) && s.Value.EndsWith("}", StringComparison.Ordinal)
-                ? Bindings.Value(s.Value.Substring(1, s.Value.Length - 2), data, item) ?? JsonNull.Instance
-                : pair.Value);
-        }
-
-        return resolved;
-    }
+    private static JsonObject ResolveArgs(JsonObject args, JsonValue? data, JsonValue? item) => Bindings.ResolveArgs(args, data, item);
 
     // The height rows are built for: the last laid-out height, else the named height, else a guess the next pass corrects.
     private double Viewport(string path, Length named)

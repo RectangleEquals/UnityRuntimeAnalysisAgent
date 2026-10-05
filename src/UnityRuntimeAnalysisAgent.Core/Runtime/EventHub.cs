@@ -110,9 +110,21 @@ public sealed class EventHub : IDisposable
     /// <summary>Whether any authenticated connection is subscribed to <paramref name="kind"/> (skip costly payloads otherwise).</summary>
     public bool HasSubscribers(string kind) => _connections().Any(c => c.Authenticated && c.IsSubscribed(kind));
 
+    /// <summary>Raised for every event published (in-process listeners, e.g. the overlay's test runs), before sending.</summary>
+    public event Action<string, ProtocolMessage>? Published;
+
     /// <summary>Sends an event (a non-batched kind) to every subscribed connection.</summary>
     public void Publish(string kind, ProtocolMessage payload, JsonObject? context = null)
     {
+        try
+        {
+            Published?.Invoke(kind, payload);
+        }
+        catch (Exception e)
+        {
+            _log.Warning($"An in-process listener of {kind} failed: {e.Message}");
+        }
+
         if (EventRegistry.Find(kind) is null)
         {
             throw new ArgumentException($"{kind} is not an event kind of the protocol.", nameof(kind));

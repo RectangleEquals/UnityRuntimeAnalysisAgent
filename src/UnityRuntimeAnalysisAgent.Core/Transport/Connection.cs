@@ -50,6 +50,11 @@ public sealed class Connection : IDisposable
     private bool _outboundCompleted;
     private readonly HashSet<string> _subscriptions = new(StringComparer.Ordinal);
     private readonly object _gate = new();
+    private long _messagesIn;
+    private long _messagesOut;
+    private long _bytes;
+    private long _droppedTotal;
+    private long _lastActivityTicks = DateTime.UtcNow.Ticks;
     private Thread? _reader;
     private Thread? _writer;
     private long _eventSeq;
@@ -130,6 +135,7 @@ public sealed class Connection : IDisposable
             {
                 _log.Warning($"Connection {Id}: dropped a {kind} event of {estimate} bytes (over the frame limit).");
                 _dropped[kind] = (_dropped.TryGetValue(kind, out var tooBig) ? tooBig : 0) + items;
+                Interlocked.Add(ref _droppedTotal, items);
                 return;
             }
 
@@ -142,6 +148,7 @@ public sealed class Connection : IDisposable
                 {
                     _queuedEventBytes -= node.Value.Bytes;
                     _dropped[droppedKind] = (_dropped.TryGetValue(droppedKind, out var n) ? n : 0) + node.Value.Items;
+                    Interlocked.Add(ref _droppedTotal, node.Value.Items);
                     _outbound.Remove(node);
                 }
 
@@ -170,6 +177,24 @@ public sealed class Connection : IDisposable
     }
 
 
+
+    /// <summary>When the connection was accepted.</summary>
+    public DateTime ConnectedUtc { get; } = DateTime.UtcNow;
+
+    /// <summary>Messages received from the client.</summary>
+    public long MessagesIn => Interlocked.Read(ref _messagesIn);
+
+    /// <summary>Messages sent to the client (responses and events).</summary>
+    public long MessagesOut => Interlocked.Read(ref _messagesOut);
+
+    /// <summary>Bytes received and sent (frames).</summary>
+    public long Bytes => Interlocked.Read(ref _bytes);
+
+    /// <summary>Events dropped under back-pressure, over the whole connection.</summary>
+    public long DroppedTotal => Interlocked.Read(ref _droppedTotal);
+
+    /// <summary>When the last message came or went (UTC), for "busy" indicators.</summary>
+    public DateTime LastActivityUtc => new(Interlocked.Read(ref _lastActivityTicks), DateTimeKind.Utc);
 
     /// <summary>Whether the connection is subscribed to an event kind.</summary>
     public bool IsSubscribed(string kind)
@@ -359,6 +384,9 @@ public sealed class Connection : IDisposable
 
     private void HandleFrame(byte[] frame)
     {
+        Interlocked.Increment(ref _messagesIn);
+        Interlocked.Add(ref _bytes, frame.Length);
+        Interlocked.Exchange(ref _lastActivityTicks, DateTime.UtcNow.Ticks);
         JsonValue json;
         try
         {
@@ -421,6 +449,9 @@ public sealed class Connection : IDisposable
                 }
 
                 writer.WriteFrame(item.Frame!);
+                Interlocked.Increment(ref _messagesOut);
+                Interlocked.Add(ref _bytes, item.Frame!.Length);
+                Interlocked.Exchange(ref _lastActivityTicks, DateTime.UtcNow.Ticks);
             }
         }
         catch (Exception e) when (e is IOException || e is ObjectDisposedException || e is ProtocolException || e is InvalidOperationException)

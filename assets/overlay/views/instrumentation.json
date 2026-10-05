@@ -1,0 +1,89 @@
+{
+  "root": {
+    "type": "stack",
+    "children": [
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "text", "class": "heading", "text": "Hooks", "style": { "flex-grow": "1" } },
+          { "type": "button", "icon": "trash", "text": "Clear all instrumentation", "command": "agent.call", "args": { "method": "instrumentation.clear", "done": "All instrumentation removed." } }
+        ]
+      },
+      { "type": "text", "class": "dim", "text": "No hooks.", "visible": "!hooks.items" },
+      {
+        "type": "list",
+        "id": "hooks",
+        "items": "hooks.items",
+        "visible": "hooks.items",
+        "style": { "height": "96px" },
+        "template": {
+          "type": "stack",
+          "class": "row",
+          "children": [
+            { "type": "text", "class": "value", "text": "{@.method.name} · {@.hits} hits · {@.owner}", "style": { "flex-grow": "1", "white-space": "nowrap", "text-overflow": "ellipsis" } },
+            { "type": "button", "icon": "x", "text": "Remove", "command": "agent.call", "args": { "method": "hook.remove", "params": { "hookId": "{@.hookId}" }, "done": "Hook removed." } }
+          ]
+        }
+      },
+      { "type": "text", "class": "heading", "text": "Watches" },
+      { "type": "text", "class": "dim", "text": "No watches.", "visible": "!watches.items" },
+      {
+        "type": "list",
+        "id": "watches",
+        "items": "watches.items",
+        "visible": "watches.items",
+        "style": { "height": "72px" },
+        "template": {
+          "type": "stack",
+          "class": "row",
+          "children": [
+            { "type": "text", "class": "value", "text": "{@.watchId} · {@.path} · {@.changes} changes", "style": { "flex-grow": "1" } },
+            { "type": "button", "icon": "x", "text": "Remove", "command": "agent.call", "args": { "method": "watch.remove", "params": { "watchId": "{@.watchId}" }, "done": "Watch removed." } }
+          ]
+        }
+      },
+      { "type": "text", "class": "heading", "text": "Live patch sets" },
+      { "type": "text", "class": "dim", "text": "No live patches.", "visible": "!patches.items" },
+      {
+        "type": "list",
+        "id": "patches",
+        "items": "patches.items",
+        "visible": "patches.items",
+        "style": { "height": "72px" },
+        "template": {
+          "type": "stack",
+          "class": "row",
+          "children": [
+            { "type": "text", "class": "value", "text": "{@.patchSetId} · {@.owner}", "style": { "flex-grow": "1" } },
+            { "type": "button", "icon": "arrow-counter-clockwise", "text": "Revert", "command": "agent.call", "args": { "method": "patch.revert", "params": { "patchSetId": "{@.patchSetId}" }, "done": "Patch set reverted." } }
+          ]
+        }
+      },
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "text", "class": "heading", "text": "Rules", "style": { "flex-grow": "1" } },
+          { "type": "button", "icon": "trash", "text": "Cancel all", "command": "agent.call", "args": { "method": "rules.clear", "params": { "owner": "all" }, "done": "All rules cancelled." }, "visible": "rules.items" }
+        ]
+      },
+      { "type": "text", "class": "dim", "text": "No rules.", "visible": "!rules.items" },
+      {
+        "type": "list",
+        "id": "rules",
+        "items": "rules.items",
+        "visible": "rules.items",
+        "style": { "height": "72px" },
+        "template": {
+          "type": "stack",
+          "class": "row",
+          "children": [
+            { "type": "text", "class": "value", "text": "{@.id} · {@.state} · fired {@.fires}×", "style": { "flex-grow": "1" } },
+            { "type": "button", "icon": "x", "text": "Cancel", "command": "agent.call", "args": { "method": "rule.cancel", "params": { "ruleId": "{@.id}" }, "done": "Rule cancelled." } }
+          ]
+        }
+      }
+    ]
+  }
+}

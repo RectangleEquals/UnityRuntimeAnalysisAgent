@@ -153,7 +153,7 @@ public sealed class UguiRenderer : IOverlayRenderer
     // Everything that changes what's drawn, cheaply: redraw only when it changes.
     private string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
-        c.EStop.Engaged, string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + (c.Prompts.Editing is null ? string.Empty : PromptCard.CaretVisible ? "|on" : "|off"),
+        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + (c.Prompts.Editing is null ? string.Empty : PromptCard.CaretVisible ? "|on" : "|off"),
         _presenter?.Hovered, _presenter?.Pressed, _presenter?.Focused);
 
     private void Rebuild(OverlayController controller)
@@ -394,8 +394,9 @@ public sealed class UguiRenderer : IOverlayRenderer
         if (node.Source.Icon is { } icon && _icons is not null && _iconRects.TryGetValue(icon, out var uv))
         {
             var layer = Get(node.Path + "#icon", element.Go.transform);
-            var size = Math.Min(Math.Min(w, h), 16);
-            Place(layer, absX + (node.Source.Type == NodeType.Icon ? 0 : 6), absY + (h - size) / 2, size, size, absX, absY);
+            var size = Math.Min(Math.Min(w, h), ViewPresenter.IconSize);
+            var inset = node.Source.Type == NodeType.Icon ? 0 : Zero(style.Layout.Padding.Left.Resolve(w));
+            Place(layer, absX + inset, absY + (h - size) / 2, size, size, absX, absY);
             var raw = Binder.Add(layer.Go, Binder.RawImage);
             Binder.Set(raw, "texture", _icons);
             Binder.Set(raw, "uvRect", uv);
@@ -456,7 +457,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         var style = node.Style;
         var layer = Get(node.Path + "#text", element.Go.transform);
         var padding = style.Layout.Padding;
-        var left = Zero(padding.Left.Resolve(w));
+        var left = Zero(padding.Left.Resolve(w)) + (node.Source.Icon is not null && node.Source.Type is not NodeType.Text ? ViewPresenter.IconSpace : 0);
         var top = Zero(padding.Top.Resolve(w));
         Place(layer, x + left, y + top, Math.Max(0, w - left - Zero(padding.Right.Resolve(w))), Math.Max(0, h - top - Zero(padding.Bottom.Resolve(w))), x, y);
         var (font, size) = _fonts!.For(style.Font, style.FontSize);

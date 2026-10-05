@@ -60,7 +60,7 @@ public sealed class DispatcherQueries : IOverlayQueries
 /// E-STOP, pick names and the tab view models. It has no UnityEngine types; a renderer draws it and feeds input back.
 /// <see cref="Tick"/> runs every frame on the main thread with unscaled realtime.
 /// </summary>
-public sealed class OverlayController
+public sealed partial class OverlayController
 {
     private readonly Func<object, long> _handleOf;
     private double _lastNow;
@@ -77,6 +77,8 @@ public sealed class OverlayController
         IAgentLogger log, Func<object, long> handleOf)
     {
         _handleOf = handleOf;
+        _writer = writer;
+        _modes = modes;
         Settings = settings;
         Model = new OverlayModel(settings, writer);
         Toasts = new ToastQueue(() => Settings.Toasts);
@@ -87,7 +89,10 @@ public sealed class OverlayController
         Picks = new PickNames();
         Queries = queries;
         EStop = new EStop(estop, log, () => Settings.EStopPauses, () => Settings.EStopDisconnects);
-        Views = new OverlayViewModels(queries, Model, LocalState, () => Selection.Current is { Destroyed: false } s ? _handleOf(s.Target) : null);
+        Views = new OverlayViewModels(queries, Model, LocalState, () => Selection.Current is { Destroyed: false } s ? _handleOf(s.Target) : null)
+        {
+            Postprocess = Postprocess,
+        };
     }
 
     /// <summary>The settings.</summary>
@@ -170,7 +175,7 @@ public sealed class OverlayController
     {
         var now = _lastNow;
         var selection = Selection.Current;
-        return new JsonObject
+        var state = new JsonObject
         {
             { "state", new JsonString(OverlayModel.Name(Model.State)) },
             { "edge", new JsonString(OverlayModel.Name(Model.Edge)) },
@@ -240,5 +245,7 @@ public sealed class OverlayController
                     { "text", new JsonString(t.Count > 1 ? $"{t.Text} (×{t.Count})" : t.Text) },
                 })) },
         };
+        AddHostState(state);
+        return state;
     }
 }

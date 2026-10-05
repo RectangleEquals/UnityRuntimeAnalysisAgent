@@ -45,6 +45,82 @@ public sealed class OverlayCommands
                 _controller.Toasts.Dismiss((long)id.GetDouble());
             }
         });
+
+        // Any agent method, as an audited overlay action: {method, params?, done?}. Errors become a warning toast; the
+        // visible tab refreshes afterwards.
+        Register("agent.call", args =>
+        {
+            var method = Text(args, "method");
+            var parameters = args["params"] as JsonObject ?? new JsonObject();
+            var done = args["done"] is JsonString d ? d.Value : null;
+            if (method == "agent.setMode" && !(parameters["mode"] is JsonString mode && _controller.CanLowerTo(mode.Value)))
+            {
+                _controller.Toasts.Add("The overlay can only lower the agent's mode.", ToastLevel.Warning, "agent", 0, 5);
+                return;
+            }
+
+            _controller.Queries.Act(method, parameters, (_, error) =>
+            {
+                if (error is not null)
+                {
+                    _controller.Toasts.Add($"{method}: {error.Message}", ToastLevel.Warning, "agent", 0, 6);
+                }
+                else if (done is not null)
+                {
+                    _controller.Toasts.Add(done, ToastLevel.Success, "agent", 0, 3);
+                }
+
+                _controller.Views.Refresh(_controller.Model.Tab);
+            });
+        });
+
+        Register("report.copy", _ => _controller.BuildReport(markdown =>
+        {
+            UnityEngine.GUIUtility.systemCopyBuffer = markdown;
+            _controller.Toasts.Add($"Report copied ({markdown.Length / 1024.0:0.#} KiB).", ToastLevel.Success, "agent", 0, 3);
+        }));
+
+        Register("setting.toggle", args => _controller.ToggleSetting(Text(args, "key")));
+        Register("setting.cycle", args => _controller.CycleSetting(Text(args, "key")));
+        Register("setting.step", args => _controller.StepSetting(Text(args, "key"), args["delta"] is JsonNumber n ? (int)n.GetDouble() : 1));
+        Register("setting.edit", args => _controller.EditSetting(Text(args, "key")));
+        Register("setting.reset", args => _controller.ResetSetting(Text(args, "key")));
+
+        Register("inspector.scene", args => _controller.SelectScene(Text(args, "scene")));
+        Register("inspector.select", args =>
+        {
+            if (args["h"] is JsonNumber h)
+            {
+                _controller.SelectHandle((long)h.GetDouble(), Text(args, "label"), args["locator"] is JsonString l ? l.Value : null);
+            }
+        });
+        Register("inspector.back", _ => Refresh(_controller.Selection.Back()));
+        Register("inspector.forward", _ => Refresh(_controller.Selection.Forward()));
+        Register("inspector.lock", _ =>
+        {
+            _controller.ToggleLock();
+            _controller.Views.Refresh("inspector");
+        });
+        Register("inspector.send", _ => _controller.SendSelection());
+
+        Register("logs.level", args => _controller.SetLogLevel(Text(args, "level")));
+        Register("activity.filter", args => _controller.SetActivityFilter(Text(args, "filter")));
+        Register("client.disconnect", _ => _controller.DisconnectClients());
+
+        // Local control (the design's "local control": works in any mode, never through a client).
+        Register("audio.toggle", _ =>
+        {
+            UnityEngine.AudioListener.pause = !UnityEngine.AudioListener.pause;
+            _controller.Toasts.Add(UnityEngine.AudioListener.pause ? "Audio paused." : "Audio resumed.", ToastLevel.Info, "agent", 0, 2);
+        });
+    }
+
+    private void Refresh(bool changed)
+    {
+        if (changed)
+        {
+            _controller.Views.Refresh("inspector");
+        }
     }
 
     /// <summary>Adds (or replaces) a command.</summary>

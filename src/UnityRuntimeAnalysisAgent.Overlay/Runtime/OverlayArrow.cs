@@ -7,8 +7,19 @@ namespace UnityRuntimeAnalysisAgent.Overlay.Runtime;
 /// <summary>What the arrow shows, the same in every renderer: its status tint and the badge count.</summary>
 public static class OverlayArrow
 {
-    /// <summary>The arrow's status.</summary>
-    public static ArrowStatus Status(OverlayController c) => OverlayModel.Status(0, false, c.Prompts.Pending.Count, c.EStop.Engaged, false);
+    /// <summary>The arrow's status: E-STOP, a pending prompt or a client exchanging messages, connected, or idle.</summary>
+    public static ArrowStatus Status(OverlayController c)
+    {
+        var clients = c.Clients();
+        var now = DateTime.UtcNow;
+        var busy = false;
+        foreach (var client in clients)
+        {
+            busy |= now - client.LastActivityUtc < OverlayController.BusyWindow;
+        }
+
+        return OverlayModel.Status(clients.Count, busy, c.Prompts.Pending.Count, c.EStop.Engaged, false);
+    }
 
     /// <summary>The theme colour token (without <c>$color.</c>) for a status.</summary>
     public static string Tint(ArrowStatus status) => status switch

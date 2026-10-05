@@ -1,0 +1,48 @@
+{
+  "root": {
+    "type": "stack",
+    "children": [
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "badge", "text": "{overlay.mode}", "tooltip": "The agent's mode: what clients may do" },
+          { "type": "text", "class": "heading", "text": "Agent {info.agentVersion}", "style": { "margin-left": "$space.2" } }
+        ]
+      },
+      { "type": "text", "class": "dim", "text": "Protocol {info.protocol.major}.{info.protocol.minor} · Unity {info.unityVersion} ({info.scriptingBackend}) · {info.loader.name} {info.loader.version} · up {uptime}" },
+      { "type": "separator" },
+      { "type": "text", "class": "label", "text": "Connection" },
+      { "type": "text", "class": "dim", "text": "No client is connected.", "visible": "!overlay.clients" },
+      {
+        "type": "list",
+        "id": "clients",
+        "items": "overlay.clients",
+        "visible": "overlay.clients",
+        "style": { "height": "48px" },
+        "template": { "type": "text", "class": "value", "text": "{@.name} · since {@.since} · {@.messages} messages · {@.bytes} · {@.dropped} dropped" }
+      },
+      { "type": "separator" },
+      { "type": "text", "class": "label", "text": "Performance" },
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "text", "class": "value", "text": "{metrics.fps} FPS · {frameTime} · {memory}", "style": { "flex-grow": "1" } },
+          { "type": "sparkline", "bind": "fpsHistory", "style": { "width": "140px" }, "tooltip": "FPS over the last refreshes" }
+        ]
+      },
+      { "type": "text", "class": "dim", "text": "Pump: alive {info.health.pump.alive} · queue {info.health.pump.queueLength} · stalled {info.health.pump.stalledMs} ms · restarted {info.health.pump.recreatedCount}×" },
+      { "type": "text", "class": "dim", "text": "Active: {info.health.jobsRunning} jobs · {info.health.hooksActive} hooks · {info.health.patchesActive} patch sets · {info.health.handles} handles · {info.health.assembliesLoadedByAgent} loaded assemblies" },
+      { "type": "separator" },
+      {
+        "type": "stack",
+        "class": "row",
+        "children": [
+          { "type": "button", "id": "copy-report", "text": "Copy report", "icon": "copy", "command": "report.copy", "tooltip": "A Markdown summary for an issue or a chat (no session token, logs by path)" },
+          { "type": "button", "id": "health-check", "text": "Run the health check", "icon": "heartbeat", "command": "agent.call", "args": { "method": "agent.healthCheck", "done": "Health check finished: see Activity." }, "style": { "margin-left": "$space.2" } }
+        ]
+      }
+    ]
+  }
+}

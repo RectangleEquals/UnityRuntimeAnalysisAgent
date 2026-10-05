@@ -81,6 +81,15 @@ public sealed class ToastQueue
     /// <summary>Ordinary toasts allowed per window.</summary>
     public const int MaxPerWindow = 8;
 
+    /// <summary>Reading speed for a toast's minimum time on screen (slow on purpose: streamed or remote screens).</summary>
+    public const double ReadingCharsPerSecond = 12;
+
+    /// <summary>Time added to every toast before its reading time (to notice it and look over).</summary>
+    public const double NoticeSeconds = 2;
+
+    /// <summary>The least time a toast stays up: long enough to notice and read it whole.</summary>
+    public static double ReadingSeconds(string text) => NoticeSeconds + text.Length / ReadingCharsPerSecond;
+
     private readonly Func<ToastFilter> _filter;
     private readonly List<Toast> _visible = new();
     private readonly List<Toast> _history = new();
@@ -102,9 +111,13 @@ public sealed class ToastQueue
     /// <summary>Ordinary toasts not shown because of the throttle, since the last summary.</summary>
     public int Suppressed { get; private set; }
 
-    /// <summary>Adds a toast. Returns whether it's shown (false: filtered out or throttled).</summary>
+    /// <summary>
+    /// Adds a toast. It stays the given time, but never less than its <see cref="ReadingSeconds"/>. Returns whether it's
+    /// shown (false: filtered out or throttled).
+    /// </summary>
     public bool Add(string text, ToastLevel level, string source, double now, double durationSeconds = 4)
     {
+        durationSeconds = Math.Max(durationSeconds, ReadingSeconds(text));
         var important = level is ToastLevel.Warning or ToastLevel.Error || source == "client";
         var filter = _filter();
         if (filter == ToastFilter.Off || (filter == ToastFilter.Important && !important))

@@ -34,6 +34,7 @@ namespace UnityRuntimeAnalysisAgent.Core.Hosting;
 public sealed class AgentHost : IDisposable
 {
     private readonly AgentConfig _config;
+    private readonly IConfigSource _configSource;
     private readonly AgentEnvironment _environment;
     private readonly IUnityApi? _unity;
     private readonly List<Connection> _connections = new();
@@ -58,6 +59,7 @@ public sealed class AgentHost : IDisposable
         string? pipeName = null, Func<string, IAgentLogger, ITransport>? createPipe = null)
     {
         _config = AgentConfig.Read(config);
+        _configSource = config;
         _environment = environment;
         _unity = unity;
         Loader = loader;
@@ -511,6 +513,21 @@ public sealed class AgentHost : IDisposable
         };
     }
 
+    // The loader's log file next to the game (BepInEx: BepInEx/LogOutput.log), when it exists.
+    private IReadOnlyList<string> LoaderLogPaths()
+    {
+        try
+        {
+            var root = System.IO.Path.GetDirectoryName(_environment.ProcessPath) ?? string.Empty;
+            var bepInEx = System.IO.Path.Combine(System.IO.Path.Combine(root, "BepInEx"), "LogOutput.log");
+            return System.IO.File.Exists(bepInEx) ? new[] { bepInEx } : Array.Empty<string>();
+        }
+        catch (ArgumentException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
     private IReadOnlyList<Connection> Connections()
     {
         lock (_gate)
@@ -612,12 +629,35 @@ public sealed class AgentHost : IDisposable
             },
             Clock = () => (Pump.Clock.FrameCount, (long)(Pump.Clock.Realtime * 1000)),
         };
-        var overlay = new OverlayController(settings, Loader as IConfigWriter, Modes, new DispatcherQueries(Dispatcher, Pump), steps, Log, Data.Handles.Mint);
+        var overlay = new OverlayController(settings, Loader as IConfigWriter, Modes, new DispatcherQueries(Dispatcher, Pump), steps, Log, Data.Handles.Mint)
+        {
+            Config = _configSource,
+            ResolveHandle = h => Data.Handles.Resolve(h),
+            DisconnectClients = steps.Disconnect,
+            PinRef = reference => Data.Expansions.Pin(reference),
+            Clients = () => Connections().Where(c => c.Authenticated).Select(c => new ReportClient
+            {
+                Name = c.ClientName ?? $"connection {c.Id}",
+                ConnectedUtc = c.ConnectedUtc,
+                Messages = c.MessagesIn + c.MessagesOut,
+                Bytes = c.Bytes,
+                DroppedEvents = c.DroppedTotal,
+                LastActivityUtc = c.LastActivityUtc,
+            }).ToList(),
+            LogPaths = LoaderLogPaths,
+        };
         foreach (var kind in new[] { EventKinds.OverlayEstop, EventKinds.OverlayPromptResult, EventKinds.OverlayPicked, EventKinds.OverlayRequest })
         {
             Events.EmittedKinds.Add(kind);
         }
 
+        Events.Published += (kind, payload) =>
+        {
+            if (kind is EventKinds.TestResult or EventKinds.TestFinished)
+            {
+                overlay.RecordTestEvent(kind, payload);
+            }
+        };
         overlay.Prompts.Answered += (prompt, button, text) => Events.Publish(EventKinds.OverlayPromptResult, new PromptResultEventParams { Id = prompt.Id, Button = button, Text = text });
         Action<FrameTime> tick = clock => overlay.Tick(clock.Realtime);
         Pump.Ticked += tick;

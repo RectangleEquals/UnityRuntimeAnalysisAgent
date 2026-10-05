@@ -1,0 +1,29 @@
+{
+  "root": {
+    "type": "stack",
+    "children": [
+      { "type": "text", "class": "heading", "text": "Plugins and mods" },
+      { "type": "text", "class": "dim", "text": "None found.", "visible": "!mods.items" },
+      {
+        "type": "list",
+        "id": "mods",
+        "items": "mods.items",
+        "visible": "mods.items",
+        "style": { "height": "200px" },
+        "template": { "type": "text", "class": "value", "text": "{@.name} {@.version} · {@.source} · {@.guid}" }
+      },
+      { "type": "separator" },
+      { "type": "text", "class": "heading", "text": "Last test run" },
+      { "type": "text", "class": "dim", "text": "No tests have run in this session.", "visible": "!overlay.testSummary" },
+      { "type": "text", "class": "value", "text": "{overlay.testSummary}", "visible": "overlay.testSummary" },
+      {
+        "type": "list",
+        "id": "tests",
+        "items": "overlay.testRows",
+        "visible": "overlay.testRows",
+        "style": { "height": "160px" },
+        "template": { "type": "text", "class": "value", "text": "{@.text}", "style": { "white-space": "nowrap", "text-overflow": "ellipsis" } }
+      }
+    ]
+  }
+}

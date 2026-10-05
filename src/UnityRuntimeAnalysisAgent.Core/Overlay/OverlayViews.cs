@@ -20,6 +20,19 @@ public interface IOverlayQueries
     void Act(string method, JsonObject parameters, Action<JsonValue?, ProtocolError?> done);
 }
 
+/// <summary>What the user chose in the tabs that changes their reads: the Inspector's scene, the log level, the Activity filter.</summary>
+public sealed class TabState
+{
+    /// <summary>The scene whose hierarchy the Inspector shows (by name), or null for the active scene.</summary>
+    public string? InspectorScene { get; set; }
+
+    /// <summary>The lowest log level the Logs tab shows (<c>debug</c>, <c>info</c>, <c>warning</c>, <c>error</c>).</summary>
+    public string LogLevel { get; set; } = "info";
+
+    /// <summary>The Activity filter: <c>all</c>, <c>mutating</c> or <c>errors</c>.</summary>
+    public string ActivityFilter { get; set; } = "all";
+}
+
 /// <summary>One read a tab needs: its result goes under <see cref="Key"/> in the tab's data.</summary>
 public sealed class TabQuery
 {
@@ -67,8 +80,14 @@ public sealed class OverlayViewModels
         _queries = queries;
         _model = model;
         _local = local;
-        _tabs = Tabs(selectionHandle);
+        _tabs = Tabs(selectionHandle, State);
     }
+
+    /// <summary>What the user chose in the tabs (scene, log level, filter); the reads use it at their next refresh.</summary>
+    public TabState State { get; } = new();
+
+    /// <summary>Turns a tab's raw results into what its view shows (rows, texts, history), before they're stored.</summary>
+    public Action<string, JsonObject>? Postprocess { get; set; }
 
     /// <summary>Raised when a tab's data was replaced (with the tab's id).</summary>
     public event Action<string>? Refreshed;
@@ -178,6 +197,7 @@ public sealed class OverlayViewModels
 
     private void Complete(string tab, JsonObject result)
     {
+        Postprocess?.Invoke(tab, result);
         _data[tab] = result;
         _inFlight.Remove(tab);
         Refreshed?.Invoke(tab);
@@ -194,7 +214,7 @@ public sealed class OverlayViewModels
         return copy;
     }
 
-    private static Dictionary<string, IReadOnlyList<TabQuery>> Tabs(Func<long?> selectionHandle)
+    private static Dictionary<string, IReadOnlyList<TabQuery>> Tabs(Func<long?> selectionHandle, TabState state)
     {
         static TabQuery Q(string key, string method, string parameters = "{}") =>
             new(key, method, () => (JsonObject)JsonValue.Parse(parameters));
@@ -202,18 +222,39 @@ public sealed class OverlayViewModels
         return new Dictionary<string, IReadOnlyList<TabQuery>>
         {
             ["status"] = new[] { Q("info", "agent.info"), Q("metrics", "metrics.get"), Q("app", "app.info") },
-            ["activity"] = new[] { Q("activity", "activity.list", "{\"limit\":100}"), Q("jobs", "job.list") },
+            ["activity"] = new[]
+            {
+                new TabQuery("activity", "activity.list", () => new JsonObject
+                {
+                    { "limit", new JsonNumber(200) },
+                    { "mutatingOnly", state.ActivityFilter == "mutating" ? JsonBoolean.True : JsonBoolean.False },
+                }),
+                Q("jobs", "job.list"),
+            },
             ["inspector"] = new[]
             {
                 Q("scenes", "scene.list"),
+                new TabQuery("tree", "go.tree", () =>
+                {
+                    var p = new JsonObject { { "depth", new JsonNumber(3) }, { "limit", new JsonNumber(400) }, { "includeInactive", JsonBoolean.True } };
+                    if (state.InspectorScene is { } scene)
+                    {
+                        p.Set("scene", new JsonString(scene));
+                    }
+
+                    return p;
+                }),
                 new TabQuery("selection", "obj.inspect", () => selectionHandle() is { } h
                     ? new JsonObject { { "target", new JsonObject { { "h", new JsonNumber(h) } } } }
                     : null),
             },
             ["pinned"] = new[] { Q("vars", "vars.list"), Q("watches", "watch.list") },
             ["instrumentation"] = new[] { Q("hooks", "hook.list"), Q("watches", "watch.list"), Q("patches", "patch.list"), Q("rules", "rule.list"), Q("jobs", "job.list") },
-            ["mods"] = new[] { Q("mods", "mod.list"), Q("tests", "test.list") },
-            ["logs"] = new[] { Q("logs", "logs.tail", "{\"limit\":200}") },
+            ["mods"] = new[] { Q("mods", "mod.list") },
+            ["logs"] = new[]
+            {
+                new TabQuery("logs", "logs.tail", () => new JsonObject { { "limit", new JsonNumber(200) }, { "minLevel", new JsonString(state.LogLevel) } }),
+            },
             ["control"] = new[] { Q("time", "time.info"), Q("app", "app.info"), Q("info", "agent.info") },
             ["settings"] = Array.Empty<TabQuery>(),
         };

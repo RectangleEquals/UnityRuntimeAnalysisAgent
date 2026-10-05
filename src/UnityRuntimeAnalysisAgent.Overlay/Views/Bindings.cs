@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Globalization;
 using System.Text;
 using UnityLudometry.Protocol.Json;
@@ -94,6 +95,30 @@ public static class Bindings
 
         return text.StartsWith("!", StringComparison.Ordinal) ? !Truthy(Value(text.Substring(1), data, item)) : Truthy(Value(text, data, item));
     }
+
+    /// <summary>
+    /// A command's arguments with every <c>{path}</c> string replaced by its value, at any depth (so
+    /// <c>{"params": {"jobId": "{@.jobId}"}}</c> works for agent calls).
+    /// </summary>
+    public static JsonObject ResolveArgs(JsonObject args, JsonValue? data, JsonValue? item)
+    {
+        var resolved = new JsonObject();
+        foreach (var pair in args)
+        {
+            resolved.Set(pair.Key, Resolve(pair.Value, data, item));
+        }
+
+        return resolved;
+    }
+
+    private static JsonValue Resolve(JsonValue? value, JsonValue? data, JsonValue? item) => value switch
+    {
+        JsonString s when s.Value.Length > 2 && s.Value[0] == '{' && s.Value[s.Value.Length - 1] == '}' => Value(s.Value.Substring(1, s.Value.Length - 2), data, item) ?? JsonNull.Instance,
+        JsonObject o => ResolveArgs(o, data, item),
+        JsonArray a => new JsonArray(a.Select(v => Resolve(v, data, item))),
+        null => JsonNull.Instance,
+        _ => value,
+    };
 
     /// <summary>Whether a value counts as true: not null/false/0/empty.</summary>
     public static bool Truthy(JsonValue? value) => value switch
