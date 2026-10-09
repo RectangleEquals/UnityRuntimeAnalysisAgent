@@ -222,18 +222,18 @@ public sealed class OverlayRuntime : IDisposable
         _log.Warning($"The overlay can't be drawn in this game: {string.Join("; ", reasons)}");
     }
 
-    // A prompt's text field takes the keyboard while it's open and focused: typed text, the caret keys, Enter, Backspace,
-    // Escape (closes the field) and Ctrl+V/C/X with the system clipboard; the game sees none of it (KeyboardCapture). A
-    // click outside the overlay pauses the field so the game gets the keyboard back.
+    // The text box with the keyboard focus (KeyboardFocus) takes the keyboard: typed text, the caret keys, Enter,
+    // Backspace, Escape and Ctrl+V/C/X with the system clipboard; the game sees none of it (KeyboardCapture). A click
+    // outside every text box blurs it so the game gets the keyboard back.
     private void Typing()
     {
-        var prompts = _controller.Prompts;
-        _keyboard.Active = prompts.Editing is not null && prompts.Focused;
-        if (!_keyboard.Active)
+        var box = _controller.Keyboard.Focused;
+        _keyboard.Active = box is not null;
+        if (box is null)
         {
-            if (prompts.Editing is not null)
+            if (_renderer is { TextFields.Count: > 0 })
             {
-                ScrollField(PointerButtons.Wheel()); // a paused field scrolls too
+                ScrollField(PointerButtons.Wheel()); // a box without the keyboard scrolls too
             }
 
             return;
@@ -241,41 +241,41 @@ public sealed class OverlayRuntime : IDisposable
 
         var typed = _keyboard.Take();
         ScrollField(typed.Wheel);
-        // A mouse press anywhere but the field pauses typing: the overlay's buttons and arrow then work at once, and a
-        // press in the game gives it the keyboard back. A press in the field keeps typing.
-        if (typed.MousePressed && !(_renderer?.TextField is { } field && _input.PointerPosition is { } pointer && field.Contains(pointer)))
+        // A mouse press anywhere but a text box blurs it: the overlay's buttons and arrow then work at once, and a press
+        // in the game gives it the keyboard back. A press in a box is the renderer's (it moves the caret or the focus).
+        if (typed.MousePressed && FieldUnderPointer() is null)
         {
-            prompts.Blur();
+            _controller.Keyboard.Blur();
             return;
         }
 
         if (typed.Cancel)
         {
-            prompts.CancelText();
+            box.Cancel();
             return;
         }
 
-        if (typed.Copy && prompts.SelectedText is { } selected)
+        if (typed.Copy && box.SelectedText is { } selected)
         {
             GUIUtility.systemCopyBuffer = selected;
         }
 
-        if (typed.Cut && prompts.Cut() is { Length: > 0 } cut)
+        if (typed.Cut && box.Cut() is { Length: > 0 } cut)
         {
             GUIUtility.systemCopyBuffer = cut;
         }
 
         if (typed.Paste)
         {
-            prompts.Paste(GUIUtility.systemCopyBuffer);
+            box.Paste(GUIUtility.systemCopyBuffer);
         }
 
-        prompts.Type(typed.Text);
+        box.Type(typed.Text);
     }
 
-    // The mouse wheel over the prompt's text field scrolls its lines (three per notch), leaving the caret where it is
-    // (renderers that see wheel events themselves decide there instead). Each gesture belongs to what was under the
-    // pointer when it started (PromptRegistry.ClaimWheel).
+    // The mouse wheel over a text box scrolls its lines (three per notch), leaving the caret where it is (renderers that
+    // see wheel events themselves decide there instead). The wheel latch decides whether the box gets it (WheelLatch); a
+    // box with nothing to scroll counts as outside it.
     private void ScrollField(float wheel)
     {
         if (wheel == 0 || _renderer is null || _renderer.HandlesWheel)
@@ -283,11 +283,30 @@ public sealed class OverlayRuntime : IDisposable
             return;
         }
 
-        var over = _renderer.TextField is { } field && _input.PointerPosition is { } pointer && field.Contains(pointer);
-        if (_controller.Prompts.ClaimWheel(over, Time.realtimeSinceStartup))
+        var box = FieldUnderPointer() is { CanScroll: true } over ? over : null;
+        if (_controller.Wheel.Claim(box is not null, Time.realtimeSinceStartup))
         {
-            _controller.Prompts.ScrollLines(wheel > 0 ? -3 : 3);
+            box!.ScrollLines(wheel > 0 ? -3 : 3);
         }
+    }
+
+    // The text box under the pointer, or null.
+    private TextBox? FieldUnderPointer()
+    {
+        if (_renderer is null || _input.PointerPosition is not { } pointer)
+        {
+            return null;
+        }
+
+        foreach (var (rect, box) in _renderer.TextFields)
+        {
+            if (rect.Contains(pointer))
+            {
+                return box;
+            }
+        }
+
+        return null;
     }
 
     private void OnFrame()
@@ -322,7 +341,6 @@ public sealed class OverlayRuntime : IDisposable
 
             Cursor();
             Typing();
-            _controller.Prompts.Animate(Time.unscaledDeltaTime);
 
             _renderer?.Update();
             var occupied = _renderer?.Occupied ?? Array.Empty<Rect>();

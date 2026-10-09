@@ -42,6 +42,10 @@ agent logs a warning saying so.
 | `Overlay.Toasts` | `Important` | Which notifications are shown next to the overlay. |
 | `Overlay.BlockUiClicks` | `true` | Keep clicks on the overlay from reaching the game's UI. |
 | `Overlay.KeyboardCapture` | `auto` | Keep the keyboard from the game while you type into an in-game prompt. `unity`: through Unity's input systems on every platform (the Input Manager is reset at the start of each frame, and the Input System package's keyboard events are marked handled). `auto` adds, on Windows, a low-level keyboard hook while you type, for games that read the keyboard outside Unity (some input middleware does). `off`: the game sees every key. Values: `auto`, `unity`, `off`. |
+| `Overlay.WheelLatch` | `0.5` | After the mouse wheel scrolls something other than a text box (the panel), how long it must rest, in seconds, before a text box under the pointer takes the wheel; so scrolling the panel never switches to a text box that slides under the pointer. From `0.1` to `1`; applies at once. |
+| `Overlay.DragScrollStartSpeed` | `2` | While you drag-select in a text box with the pointer just past its top or bottom, the box scrolls toward the pointer at this many lines per second, selecting as it goes. From `0.25` to `10`; applies at once. |
+| `Overlay.DragScrollTopSpeed` | `80` | The fastest that drag-scrolling goes, in lines per second, with the pointer at `Overlay.DragScrollRampDistance` or further out. From `30` to `100`; applies at once. |
+| `Overlay.DragScrollRampDistance` | `5` | How far past the text box's edge, in line heights, drag-scrolling reaches its top speed; in between the speed follows an ease-out quart curve (it rises quickly, then levels off). From `0.5` to `15`; applies at once. |
 | `Overlay.BlockWorldInput` | `false` | Keep mouse clicks over the overlay from reaching the game world (the Input Manager's mouse-button queries; games that only use the Input System package aren't covered). |
 | `Overlay.ForceCursorWhenExpanded` | `true` | Show and free the mouse cursor while the overlay is expanded. |
 | `Overlay.InspectorStartsLocked` | `true` | The inspector starts locked (no edits until unlocked). |
@@ -49,7 +53,7 @@ agent logs a warning saying so.
 | `Overlay.EStopPauses` | `false` | E-STOP also pauses the game. |
 | `Overlay.EStopDisconnects` | `true` | E-STOP also disconnects clients. |
 | `Overlay.ExcludeFromScreenshots` | `true` | Hide the overlay in screenshots the agent takes. |
-| `Overlay.VisibleTabs` | `all` | The overlay tabs to show (all, or a comma-separated list). |
+| `Overlay.VisibleTabs` | `all` | The overlay tabs to show (all, or a comma-separated list). Status, Activity and Control always show: they hold the health view, the in-game questions and notifications, and E-STOP. |
 | `Overlay.FollowStaticToolSelection` | `false` | Follow selections made in a static analysis tool, when the orchestrator relays them. |
 | `Overlay.Renderer` | `auto` | How the overlay is drawn (auto picks the first that works). Values: `auto`, `uitoolkit`, `ugui`, `imgui`. |
 | `Overlay.Theme` | `default` | The overlay's theme (a file in the overlay's themes folder). |

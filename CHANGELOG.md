@@ -216,7 +216,7 @@
     20000 characters long.
   - The field shows 8 lines and scrolls: the mouse wheel over it glides its lines without moving the caret, and typing
     glides back to the caret. A wheel movement outside the field makes it ignore the wheel until the wheel rests
-    (0.67 s), so scrolling the panel never switches to the field under the pointer.
+    (`Overlay.WheelLatch`, 0.5 s by default), so scrolling the panel never switches to the field under the pointer.
   - The field is a box in the theme (`field`, `field-focused`, `field-paused`). A mouse press anywhere but the field
     pauses typing (the game gets the keyboard back, the text stays); a click on the field resumes it.
   - While you type, the game doesn't see the keyboard (`Overlay.KeyboardCapture`, [configuration](docs/configuration.md)):
@@ -229,3 +229,28 @@
 - The overlay panel stays put under the pointer: a tab's periodic refresh rebuilds the panel only when its data changed,
   and never while a mouse button is held or on the frame it's released, so clicks on buttons and the arrow always
   land.
+- Text boxes are a control of their own, not part of prompts: any view can show one, and each keeps its own text, caret,
+  selection and scroll position. Several prompts can have their text boxes open at once; a click in one gives it the
+  keyboard (the others keep their text), and each has its own Send and Cancel.
+  - Ctrl+Left and Ctrl+Right move the caret by words (a run of punctuation counts as a word, as in code editors);
+    with Shift they select.
+  - The mouse in a text box: a click places the caret (Shift+click selects up to it), a drag selects, and a double
+    click selects the word under the pointer (a drag after it selects whole words).
+  - A drag held past a text box's top or bottom scrolls it toward the pointer and selects as it goes, faster the further
+    out the pointer is, on an ease-out curve: 2 lines a second at the edge, 80 at 5 line heights out
+    (`Overlay.DragScrollStartSpeed`, `Overlay.DragScrollTopSpeed`, `Overlay.DragScrollRampDistance`).
+  - A text box with nothing to scroll leaves the mouse wheel to the panel around it.
+  - `Overlay.WheelLatch` sets how long the wheel must rest before a text box can take it (0.1 to 1 s; a slider in the
+    Settings tab, applied at once). Number settings with a range show a slider in the Settings tab (UI Toolkit).
+- The Settings tab lists settings in sections (General, Shortcuts, Position and Size, Appearance, Mouse and Keyboard,
+  Text Boxes, Inspector and Time, E-STOP, Gamepad) and names them in plain words (for example Mouse Input Latch Delay
+  for `Overlay.WheelLatch`), and resting the pointer on a setting shows a tooltip with what it does in more detail, its
+  default and its key in the configuration file.
+- Overlay tooltips: a view node's `"tooltip"` now shows after the pointer rests on the node for half a second (UI
+  Toolkit and uGUI; UI Toolkit's own tooltips only work in the editor).
+- Views can line controls up in columns: nodes with the same `"sizeGroup"` all take the width of the group's widest
+  member, measured from the data (every row of a list, not just the ones on screen); `"reserve": true` keeps the space
+  of hidden children. The Settings tab uses it for its buttons, which now form an even column (capped at 30% of the
+  row, long labels end in …), and its list fills the panel's height.
+- A tab's panel is redrawn only when data its view shows changes (not when a client's connection time or a
+  notification's age ticks), and lists keep their scroll position when it is redrawn or when you come back to the tab.

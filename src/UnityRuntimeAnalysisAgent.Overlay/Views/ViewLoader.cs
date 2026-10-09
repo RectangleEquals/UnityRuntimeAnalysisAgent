@@ -27,7 +27,7 @@ public static class ViewLoader
     private static readonly HashSet<string> NodeProperties = new(StringComparer.Ordinal)
     {
         "type", "id", "class", "style", "text", "bind", "visible", "command", "args", "icon", "image", "effect", "tooltip", "items",
-        "children", "childrenPath", "template", "columns", "range", "wrapRows",
+        "children", "childrenPath", "template", "columns", "range", "wrapRows", "sizeGroup", "reserve",
     };
 
     /// <summary>Reads a view from its JSON text.</summary>
@@ -144,6 +144,8 @@ public static class ViewLoader
         node.Items = Str(json, "items", label, warnings);
         node.ChildrenPath = Str(json, "childrenPath", label, warnings);
         node.WrapRows = json["wrapRows"] is JsonBoolean { Value: true };
+        node.SizeGroup = Str(json, "sizeGroup", label, warnings);
+        node.Reserve = json["reserve"] is JsonBoolean { Value: true };
         if (json["range"] is JsonArray range && range.Count == 2 && range[0] is JsonNumber min && range[1] is JsonNumber max)
         {
             node.Range = (min.GetDouble(), max.GetDouble());

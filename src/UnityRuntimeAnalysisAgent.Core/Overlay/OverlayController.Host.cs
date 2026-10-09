@@ -41,27 +41,45 @@ public sealed partial class OverlayController
     public bool CanLowerTo(string wireMode) =>
         AgentModes.TryParse(wireMode, out var mode) && ModeController.Rank(mode) < ModeController.Rank(_modes.Current);
 
-    /// <summary>The overlay's settings as rows for the Settings tab: key, value, default, kind, choices, changed.</summary>
+    /// <summary>
+    /// The overlay's settings as rows for the Settings tab: key, value, default, kind, choices, changed; each section starts
+    /// with a heading row (<c>heading</c>: true, <c>group</c>).
+    /// </summary>
     public JsonArray SettingRows()
     {
         var rows = new JsonArray();
-        foreach (var key in ConfigKeys.All.Where(k => k.Section == "Overlay"))
+        string? group = null;
+        foreach (var key in ConfigKeys.All.Where(k => k.Section == "Overlay").OrderBy(k => k.Group is { } g ? ConfigKeys.OverlayGroups.ToList().IndexOf(g) : int.MaxValue))
         {
             var full = key.Section + "." + key.Name;
             var value = SettingValue(key);
+            if ((key.Group ?? "Other") != group)
+            {
+                group = key.Group ?? "Other";
+                rows.Add(new JsonObject { { "heading", JsonBoolean.True }, { "group", new JsonString(group) } });
+            }
+
             var row = new JsonObject
             {
                 { "key", new JsonString(full) },
-                { "name", new JsonString(key.Name) },
+                { "name", new JsonString(key.Title ?? key.Name) },
+                { "help", new JsonString($"{key.Help ?? key.Description} Default: {(key.Default.Length > 0 ? key.Default : "(none)")}. In the configuration file: {full}.") },
                 { "value", new JsonString(value.Length > 0 ? value : "(none)") },
                 { "default", new JsonString(key.Default) },
                 { "description", new JsonString(key.Description) },
                 { "kind", new JsonString(key.Kind.ToString().ToLowerInvariant()) },
                 { "changed", value != key.Default ? JsonBoolean.True : JsonBoolean.False },
+                { "group", new JsonString(group) },
             };
             if (key.Kind == ConfigKind.Bool)
             {
                 row.Set("on", string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? JsonBoolean.True : JsonBoolean.False);
+            }
+
+            if (key is { Min: { } min, Max: { } max } && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+            {
+                row.Set("slider", JsonBoolean.True);
+                row.Set("fraction", new JsonNumber((Math.Max(min, Math.Min(max, number)) - min) / (max - min)));
             }
 
             rows.Add(row);
@@ -87,10 +105,54 @@ public sealed partial class OverlayController
                 return false;
         }
 
+        if (key is { Min: { } min, Max: { } max } && (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) || number < min - 1e-9 || number > max + 1e-9))
+        {
+            return false;
+        }
+
         _settingValues[fullKey] = value;
         _writer?.Set(fullKey, value);
+        if (ApplyNow(fullKey, value))
+        {
+            return true; // its row shows the new value (a slider would otherwise toast at every step of a drag)
+        }
+
         Toasts.Add($"{key.Name} = {(value.Length > 0 ? value : "(none)")}. Saved; it applies after the game restarts.", ToastLevel.Info, "agent", _lastNow, 4);
         return true;
+    }
+
+    // The settings that apply at once: whether this one did.
+    private bool ApplyNow(string fullKey, string value)
+    {
+        switch (fullKey)
+        {
+            case "Overlay.WheelLatch":
+                Settings.WheelLatch = Wheel.Gap = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                return true;
+            case "Overlay.DragScrollStartSpeed":
+                Settings.DragScrollStartSpeed = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                return true;
+            case "Overlay.DragScrollTopSpeed":
+                Settings.DragScrollTopSpeed = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                return true;
+            case "Overlay.DragScrollRampDistance":
+                Settings.DragScrollRampDistance = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Sets a number setting with a range from a slider's position (0 = its smallest value, 1 = its largest), in its steps.</summary>
+    public bool SlideSetting(string fullKey, double fraction)
+    {
+        if (Find(fullKey) is not { Min: { } min, Max: { } max } key)
+        {
+            return false;
+        }
+
+        var value = Math.Round((min + (Math.Max(0, Math.Min(1, fraction)) * (max - min))) / key.Step) * key.Step;
+        return SetSetting(fullKey, Math.Max(min, Math.Min(max, value)).ToString("0.##", CultureInfo.InvariantCulture));
     }
 
     /// <summary>Flips a true/false setting.</summary>
@@ -109,7 +171,7 @@ public sealed partial class OverlayController
         return SetSetting(fullKey, key.Choices[(index + 1) % key.Choices.Count]);
     }
 
-    /// <summary>Steps a number setting (whole numbers by 1, others by 0.05).</summary>
+    /// <summary>Steps a number setting (whole numbers by 1, others by their step).</summary>
     public bool StepSetting(string fullKey, int direction)
     {
         var key = Find(fullKey);
@@ -121,7 +183,7 @@ public sealed partial class OverlayController
         return key.Kind switch
         {
             ConfigKind.Int => SetSetting(fullKey, ((int)number + Math.Sign(direction)).ToString(CultureInfo.InvariantCulture)),
-            ConfigKind.Float => SetSetting(fullKey, Math.Round(number + (0.05 * Math.Sign(direction)), 2).ToString("0.##", CultureInfo.InvariantCulture)),
+            ConfigKind.Float => SetSetting(fullKey, Math.Max(key.Min ?? double.MinValue, Math.Min(key.Max ?? double.MaxValue, Math.Round(number + (key.Step * Math.Sign(direction)), 2))).ToString("0.##", CultureInfo.InvariantCulture)),
             _ => false,
         };
     }

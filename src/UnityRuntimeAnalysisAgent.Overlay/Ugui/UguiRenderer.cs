@@ -28,11 +28,20 @@ public sealed class UguiRenderer : IOverlayRenderer
     private readonly List<Rect> _occupied = new();
     private readonly List<(object Text, GameObject Bar, int Index, double Since, GameObject[] Bands, (int Start, int End)? Selection)> _carets = new();
     private double _fieldWidth; // the prompt's text field as last laid out, for the prompt's own wrapping
+    private readonly List<(Rect Rect, TextBox Box)> _textFields = new();
+    private readonly Dictionary<GameObject, (object Text, TextBox Box, int ScrollBase)> _fieldTexts = new();
+    private readonly HashSet<GameObject> _fieldWired = new();
+    private (GameObject Go, Vector2 Screen)? _fieldDrag; // a drag in a text box, with the pointer's latest position
     private string _caretKey = string.Empty;
     private double _caretSince;
     private Func<string, double>? _fieldMeasure;
     private double _scale = 1;
     private readonly Dictionary<string, RenderNode> _nodes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (double X, double Y, double W, double H)> _bounds = new(StringComparer.Ordinal); // where each node was drawn, in canvas units
+    private readonly TooltipTimer _tooltip = new();
+    private readonly Dictionary<string, string> _cutTexts = new(StringComparer.Ordinal); // the whole texts of cut-off texts, by the path that shows them as tooltips
+    private string? _hoverOwner; // the nearest interactive node being materialized
+    private readonly HashSet<GameObject> _cutWired = new(); // cut-off texts that take the pointer themselves
     private readonly Dictionary<OverlayEdge, Texture2D> _arrows = new();
     private OverlayContext? _context;
     private GameObject? _root;
@@ -44,6 +53,7 @@ public sealed class UguiRenderer : IOverlayRenderer
     private EffectsDriver? _effects;
     private OverlayCommands? _commands;
     private IReadOnlyDictionary<string, ViewDocument> _views = new Dictionary<string, ViewDocument>();
+    private readonly Dictionary<string, IReadOnlyList<string>> _dependencies = new(StringComparer.Ordinal); // the data paths each tab's view shows
     private Texture2D? _icons;
     private Dictionary<string, Rect> _iconRects = new(StringComparer.Ordinal);
     private Dictionary<string, Texture2D> _images = new(StringComparer.Ordinal);
@@ -68,7 +78,7 @@ public sealed class UguiRenderer : IOverlayRenderer
     public IReadOnlyList<Rect> Occupied => _occupied;
 
     /// <inheritdoc />
-    public Rect? TextField { get; private set; }
+    public IReadOnlyList<(Rect Rect, TextBox Box)> TextFields => _textFields;
 
     /// <inheritdoc />
     public bool HandlesWheel => false;
@@ -118,6 +128,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         var controller = _context.Controller;
         var now = _context.Now();
         _effects?.Tick(now);
+        DragTick();
         PlaceCarets(now);
         var signature = Signature(controller);
         if (!_dirty && signature == _signature)
@@ -159,32 +170,43 @@ public sealed class UguiRenderer : IOverlayRenderer
         _canvas = null;
     }
 
-    // A tab's periodic refresh only rebuilds the panel when its data changed (a rebuild replaces the button under a click).
+    // A tab's periodic refresh rebuilds the panel only when it shows that tab and a value its view shows changed
+    // (ViewDependencies): a rebuild replaces the elements under the pointer (a click, a scroll position, a tooltip).
     private void OnRefreshed(string tab)
     {
-        var data = _context?.Controller.Views.Data(tab).ToString() ?? string.Empty;
-        if (_seen.TryGetValue(tab, out var previous) && previous == data)
+        if (_context is null || tab != _context.Controller.Model.Tab)
+        {
+            return; // another tab: switching to it rebuilds anyway
+        }
+
+        var data = _context.Controller.Views.Data(tab);
+        var key = _views.TryGetValue(tab, out var view)
+            ? ViewDependencies.Key(_dependencies.TryGetValue(tab, out var paths) ? paths : _dependencies[tab] = ViewDependencies.Of(view), data)
+            : data.ToString();
+        if (_seen.TryGetValue(tab, out var previous) && previous == key)
         {
             return;
         }
 
-        _seen[tab] = data;
+        _seen[tab] = key;
         _dirty = true;
     }
 
     private void OnModelChanged(OverlayModel model) => _dirty = true;
 
-    // Everything that changes what's drawn, cheaply: redraw only when it changes.
+    // Everything that changes what's drawn, cheaply: redraw only when it changes. Text boxes count by their edits
+    // (Version) and the line their glide is at (the text doesn't slide here), and the keyboard focus.
     private string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
-        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + "|" + c.Prompts.Caret + "|" + c.Prompts.SelectionAnchor + "|" + c.Prompts.FirstLine + "|" + c.Prompts.ShownFirstLine + (c.Prompts.Focused ? "|typing" : string.Empty),
-        _presenter?.Hovered, _presenter?.Pressed, _presenter?.Focused);
+        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Field is { } box ? p.Id + ":" + box.Version : p.Id)),
+        c.Keyboard.Version, string.Join(",", _textFields.Select(f => f.Box.Version + ":" + f.Box.ShownFirstLine).ToArray()),
+        _presenter?.Hovered, _presenter?.Pressed, _presenter?.Focused, _tooltip.Shown(_context!.Now()));
 
     private void Rebuild(OverlayController controller)
     {
         Rebuilds++;
         _carets.Clear();
-        TextField = null;
+        _textFields.Clear();
         var settings = controller.Settings;
         var scale = settings.EffectiveScale(Screen.height);
         if (settings.RetroFonts)
@@ -203,6 +225,8 @@ public sealed class UguiRenderer : IOverlayRenderer
         }
 
         _nodes.Clear();
+        _bounds.Clear();
+        _cutTexts.Clear();
         var model = controller.Model;
         if (model.State != OverlayVisibility.Hidden)
         {
@@ -213,6 +237,7 @@ public sealed class UguiRenderer : IOverlayRenderer
             }
 
             DrawCards(controller, width, height);
+            DrawTooltip(width, height);
         }
 
         foreach (var stale in _pool.Where(p => !p.Value.Used).ToList())
@@ -373,6 +398,28 @@ public sealed class UguiRenderer : IOverlayRenderer
         Occupy(x, y, root.Rect.Width, root.Rect.Height);
     }
 
+    // The tooltip of the node under the pointer, once the pointer rests on it: below the node (above it when there's no
+    // room below), on screen, drawn last (over everything) and never taking the pointer.
+    private void DrawTooltip(double width, double height)
+    {
+        if (_tooltip.Shown(_context!.Now()) is not { } text || _tooltip.Target is not string path || !_bounds.TryGetValue(path, out var over))
+        {
+            return;
+        }
+
+        var node = new ViewNode { Type = NodeType.Panel, Id = "tooltip", Classes = { "tooltip" } };
+        node.Children.Add(new ViewNode { Type = NodeType.Text, Text = Escape(text), Classes = { "tooltip-text" } });
+        var root = _presenter!.Present(new ViewDocument("tooltip", node, Array.Empty<string>()), null, Math.Min(320, width), double.NaN);
+        var (w, h) = (root.Rect.Width, root.Rect.Height);
+        var y = over.Y + over.H + 4;
+        if (y + h > height && over.Y - h - 4 >= 0)
+        {
+            y = over.Y - h - 4;
+        }
+
+        Materialize(root, _root!.transform, Math.Max(0, Math.Min(over.X, width - w)), Math.Max(0, Math.Min(y, height - h)), 0, 0);
+    }
+
     private void Occupy(double x, double y, double w, double h) =>
         _occupied.Add(new Rect((float)(x * _scale), (float)(y * _scale), (float)(w * _scale), (float)(h * _scale)));
 
@@ -385,6 +432,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         var element = Get(node.Path, parent);
         Place(element, absX, absY, w, h, parentX, parentY);
         _nodes[node.Path] = node;
+        _bounds[node.Path] = (absX, absY, w, h);
         var style = node.Style;
         var radius = (int)Math.Round(style.BorderRadius);
 
@@ -475,10 +523,18 @@ public sealed class UguiRenderer : IOverlayRenderer
             group.alpha = (float)style.Opacity;
         }
 
+        var owner = _hoverOwner;
+        if (node.Interactive)
+        {
+            _hoverOwner = node.Path;
+        }
+
         foreach (var child in node.Children)
         {
             Materialize(child, element.Go.transform, originX, originY, absX, absY);
         }
+
+        _hoverOwner = owner;
     }
 
     private void DrawText(RenderNode node, Element element, string text, double x, double y, double w, double h)
@@ -505,10 +561,44 @@ public sealed class UguiRenderer : IOverlayRenderer
         });
         Binder.Set(component, "horizontalOverflow", style.NoWrap ? "Overflow" : "Wrap");
         Binder.Set(component, "verticalOverflow", "Truncate");
-        Binder.Set(component, "text", style.Ellipsis ? Ellipsize(text, style, w) : text);
-        if (node.Source.TextBox)
+        var shown = style.Ellipsis ? Ellipsize(text, style, w) : text;
+        Binder.Set(component, "text", shown);
+        if (shown != text && node.Tooltip is null)
         {
-            TextField = new Rect((float)(x * _scale), (float)(y * _scale), (float)(w * _scale), (float)(h * _scale));
+            if ((node.Interactive ? node.Path : _hoverOwner) is { } owner)
+            {
+                if (!(_nodes.TryGetValue(owner, out var ownerNode) && ownerNode.Tooltip is not null))
+                {
+                    _cutTexts[owner] = text;
+                }
+            }
+            else
+            {
+                // Nothing to rest on: the text takes the pointer itself (it has no clicks to swallow).
+                _cutTexts[node.Path] = text;
+                Binder.Set(component, "raycastTarget", true);
+                if (_cutWired.Add(layer.Go))
+                {
+                    Wire(layer.Go, node.Path);
+                }
+            }
+        }
+
+        if (node.Source.Box is { } textBox)
+        {
+            _textFields.Add((new Rect((float)(x * _scale), (float)(y * _scale), (float)(w * _scale), (float)(h * _scale)), textBox));
+
+            // The mouse in the box: the text takes pointer events (once per pooled object; the handlers read the latest
+            // build's text, box and scroll position for that object).
+            _fieldTexts[layer.Go] = (component, textBox, node.Source.ScrollBase);
+            Binder.Set(component, "raycastTarget", true);
+            if (_fieldWired.Add(layer.Go))
+            {
+                var go = layer.Go;
+                Binder.On(go, "PointerDown", d => FieldPointer(go, d.Position, down: true));
+                Binder.On(go, "Drag", d => FieldPointer(go, d.Position, down: false));
+                Binder.On(go, "PointerUp", _ => EndFieldDrag());
+            }
         }
 
         if (node.Source.Caret is int caret)
@@ -526,7 +616,7 @@ public sealed class UguiRenderer : IOverlayRenderer
             Binder.Set(image, "color", EffectsDriver.Rgba(style.Color));
             Binder.Set(image, "raycastTarget", false);
             // One selection band per line the field can show (placed in PlaceCarets).
-            var bands = new GameObject[PromptRegistry.VisibleLines + 1];
+            var bands = new GameObject[(node.Source.Box?.VisibleLines ?? 0) + 1];
             var tint = EffectsDriver.Rgba(style.Color);
             tint.a = 0.3f;
             for (var i = 0; i < bands.Length; i++)
@@ -547,6 +637,120 @@ public sealed class UguiRenderer : IOverlayRenderer
 
             _carets.Add((component, bar.Go, caret, _caretSince, bands, node.Source.Selection));
         }
+    }
+
+    // A press (or drag) in a text box: the line and column under the pointer, from the text's own generator (its lines'
+    // tops and its characters' cursor positions, wrapping included), go to the box as a caret move; a drag or Shift
+    // extends the selection, a double click selects the word (the box counts the clicks). A press gives the box the keyboard.
+    private void FieldPointer(GameObject go, Vector2 screen, bool down, bool tick = false)
+    {
+        if (_context is null || !_fieldTexts.TryGetValue(go, out var field))
+        {
+            return;
+        }
+
+        var text = field.Text;
+
+        var generator = text.GetType().GetProperty("cachedTextGenerator")?.GetValue(text, null) as TextGenerator;
+        if (generator == null || generator.characterCount == 0 || generator.lineCount == 0)
+        {
+            return;
+        }
+
+        var unit = text.GetType().GetProperty("pixelsPerUnit")?.GetValue(text, null) is float p && p > 0 ? p : 1f;
+        var local = go.transform.InverseTransformPoint(new Vector3(screen.x, screen.y, 0)) * unit; // an overlay canvas: world = screen
+        var lines = generator.lines;
+        var characters = generator.characters;
+        var line = lines.Count - 1;
+        for (var l = 0; l < lines.Count; l++)
+        {
+            if (local.y >= lines[l].topY - lines[l].height)
+            {
+                line = l;
+                break;
+            }
+        }
+
+        // The column nearest the pointer's x on one of the drawn lines.
+        int Column(int drawn)
+        {
+            drawn = Math.Max(0, Math.Min(lines.Count - 1, drawn));
+            var start = lines[drawn].startCharIdx;
+            var end = Math.Min(characters.Count - 1, drawn + 1 < lines.Count ? lines[drawn + 1].startCharIdx : characters.Count - 1);
+            var column = 0;
+            var best = double.MaxValue;
+            for (var i = start; i <= end; i++)
+            {
+                var distance = Math.Abs(characters[i].cursorPos.x - local.x);
+                if (distance < best)
+                {
+                    best = distance;
+                    column = i - start;
+                }
+            }
+
+            return column;
+        }
+
+        // Past the drawn lines' top or bottom (in line heights), a drag scrolls the box toward the pointer.
+        var height = Math.Max(1f, lines[0].height);
+        var top = lines[0].topY;
+        var bottom = lines[lines.Count - 1].topY - lines[lines.Count - 1].height;
+        var beyond = local.y > top ? -(local.y - top) / height : local.y < bottom ? (bottom - local.y) / height : 0;
+        if (down)
+        {
+            _context.Controller.Keyboard.Focus(field.Box);
+            field.Box.Press(field.ScrollBase + line, Column(line), extend: PointerButtons.ShiftHeld());
+            _fieldDrag = (go, screen);
+        }
+        else if (beyond == 0)
+        {
+            _fieldDrag = (go, screen);
+            if (tick)
+            {
+                field.Box.DragBeyond(0, 0, _ => 0); // inside: only pointer moves select
+                return;
+            }
+
+            field.Box.DragTo(field.ScrollBase + line, Column(line));
+        }
+        else
+        {
+            _fieldDrag = (go, screen);
+            field.Box.DragBeyond(beyond, _context.Controller.Settings.DragScrollRate(beyond), l => Column(l - field.ScrollBase));
+        }
+
+        if (!tick)
+        {
+            _dirty = true; // a tick's changes show through the box's version (Signature)
+        }
+    }
+
+    // A drag held past a text box's top or bottom keeps scrolling it every frame, moving or not.
+    private void DragTick()
+    {
+        if (_fieldDrag is not { } drag)
+        {
+            return;
+        }
+
+        if (drag.Go == null || !PointerButtons.Held())
+        {
+            EndFieldDrag();
+            return;
+        }
+
+        FieldPointer(drag.Go, drag.Screen, down: false, tick: true);
+    }
+
+    private void EndFieldDrag()
+    {
+        if (_fieldDrag is { } drag && _fieldTexts.TryGetValue(drag.Go, out var field))
+        {
+            field.Box.DragBeyond(0, 0, _ => 0);
+        }
+
+        _fieldDrag = null;
     }
 
     // Text fields' carets: placed at their character from the text's own generator (what Unity's input field uses: the
@@ -650,15 +854,27 @@ public sealed class UguiRenderer : IOverlayRenderer
     // Pointer input for an element: hover, press, click (its command) and scrolling (clipping nodes).
     private void Wire(GameObject go, string path)
     {
-        Binder.On(go, "PointerEnter", _ => Set(() => _presenter!.Hovered = path));
+        Binder.On(go, "PointerEnter", _ => Set(() =>
+        {
+            _presenter!.Hovered = path;
+            if ((_nodes.TryGetValue(path, out var node) ? node.Tooltip : null) is { } tip || _cutTexts.TryGetValue(path, out tip))
+            {
+                _tooltip.Enter(path, tip, _context!.Now());
+            }
+        }));
         Binder.On(go, "PointerExit", _ => Set(() =>
         {
+            _tooltip.Leave(path);
             if (_presenter!.Hovered == path)
             {
                 _presenter.Hovered = null;
             }
         }));
-        Binder.On(go, "PointerDown", _ => Set(() => _presenter!.Pressed = _presenter.Focused = path));
+        Binder.On(go, "PointerDown", _ => Set(() =>
+        {
+            _tooltip.Clear();
+            _presenter!.Pressed = _presenter.Focused = path;
+        }));
         Binder.On(go, "PointerUp", _ => Set(() => _presenter!.Pressed = null));
         Binder.On(go, "PointerClick", _ =>
         {

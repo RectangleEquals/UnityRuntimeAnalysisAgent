@@ -265,8 +265,7 @@ public sealed class KeyboardCapture : IDisposable
 
         private static readonly (KeyCode Key, char Edit)[] EditKeyCodes =
         {
-            (KeyCode.LeftArrow, EditKeys.Left), (KeyCode.RightArrow, EditKeys.Right), (KeyCode.UpArrow, EditKeys.Up),
-            (KeyCode.DownArrow, EditKeys.Down), (KeyCode.PageUp, EditKeys.PageUp), (KeyCode.PageDown, EditKeys.PageDown),
+            (KeyCode.UpArrow, EditKeys.Up), (KeyCode.DownArrow, EditKeys.Down), (KeyCode.PageUp, EditKeys.PageUp), (KeyCode.PageDown, EditKeys.PageDown),
             (KeyCode.Delete, EditKeys.Delete),
         };
 
@@ -274,6 +273,7 @@ public sealed class KeyboardCapture : IDisposable
         private readonly MethodInfo _getKey;
         private readonly MethodInfo _getKeyDown;
         private readonly MethodInfo _reset;
+        private readonly MethodInfo? _getKeyUp;
         private readonly PropertyInfo? _scroll;
         private bool _broken;
 
@@ -283,6 +283,7 @@ public sealed class KeyboardCapture : IDisposable
             _getKey = getKey;
             _getKeyDown = getKeyDown;
             _reset = reset;
+            _getKeyUp = getKey.DeclaringType!.GetMethod("GetKeyUp", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(KeyCode) }, null);
             _scroll = inputString.DeclaringType!.GetProperty("mouseScrollDelta", BindingFlags.Public | BindingFlags.Static);
         }
 
@@ -344,9 +345,12 @@ public sealed class KeyboardCapture : IDisposable
                     capture.Shortcut('\u001b');
                 }
 
-                // Caret moves (Shift extends the selection); Home and End: their line, or with Ctrl the whole text.
+                // Caret moves (Shift extends the selection); Home and End: their line, or with Ctrl the whole text; the
+                // arrows with Ctrl: by words.
                 var moves = EditKeyCodes.Concat(new[]
                 {
+                    (KeyCode.LeftArrow, control ? EditKeys.WordLeft : EditKeys.Left),
+                    (KeyCode.RightArrow, control ? EditKeys.WordRight : EditKeys.Right),
                     (KeyCode.Home, control ? EditKeys.DocumentStart : EditKeys.Home),
                     (KeyCode.End, control ? EditKeys.DocumentEnd : EditKeys.End),
                 });
@@ -400,8 +404,9 @@ public sealed class KeyboardCapture : IDisposable
 
             try
             {
+                // The release frame too: the reset would swallow the release, and the overlay would think the button still held.
                 return Wheel() != 0 || new[] { KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.Mouse2 }.Any(k =>
-                    (bool)_getKey.Invoke(null, new object[] { k }) || (bool)_getKeyDown.Invoke(null, new object[] { k }));
+                    (bool)_getKey.Invoke(null, new object[] { k }) || (bool)_getKeyDown.Invoke(null, new object[] { k }) || (_getKeyUp?.Invoke(null, new object[] { k }) is true));
             }
             catch (TargetInvocationException)
             {
@@ -766,7 +771,8 @@ public sealed class KeyboardCapture : IDisposable
 
                 foreach (var (name, edit) in new[]
                 {
-                    ("leftArrowKey", EditKeys.Left), ("rightArrowKey", EditKeys.Right), ("upArrowKey", EditKeys.Up), ("downArrowKey", EditKeys.Down),
+                    ("leftArrowKey", control ? EditKeys.WordLeft : EditKeys.Left), ("rightArrowKey", control ? EditKeys.WordRight : EditKeys.Right),
+                    ("upArrowKey", EditKeys.Up), ("downArrowKey", EditKeys.Down),
                     ("pageUpKey", EditKeys.PageUp), ("pageDownKey", EditKeys.PageDown), ("deleteKey", EditKeys.Delete),
                     ("homeKey", control ? EditKeys.DocumentStart : EditKeys.Home), ("endKey", control ? EditKeys.DocumentEnd : EditKeys.End),
                 })
@@ -963,8 +969,8 @@ public sealed class KeyboardCapture : IDisposable
 
                 char? move = key.Vk switch
                 {
-                    0x25 => EditKeys.Left,
-                    0x27 => EditKeys.Right,
+                    0x25 => key.Control ? EditKeys.WordLeft : EditKeys.Left,
+                    0x27 => key.Control ? EditKeys.WordRight : EditKeys.Right,
                     0x26 => EditKeys.Up,
                     0x28 => EditKeys.Down,
                     0x21 => EditKeys.PageUp,

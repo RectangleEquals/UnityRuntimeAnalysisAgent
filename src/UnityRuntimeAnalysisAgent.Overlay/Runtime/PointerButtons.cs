@@ -40,6 +40,38 @@ public static class PointerButtons
         return value is UnityEngine.Vector2 v ? v.y : 0;
     }
 
+    /// <summary>
+    /// Whether Shift is held (for a Shift+click): from the OS on Windows (the overlay resets the Input Manager while the
+    /// player types), otherwise from the Input Manager.
+    /// </summary>
+    public static bool ShiftHeld()
+    {
+        if (UnityEngine.Application.platform == UnityEngine.RuntimePlatform.WindowsPlayer)
+        {
+            try
+            {
+                return (GetAsyncKeyState(0x10) & 0x8000) != 0;
+            }
+            catch (Exception)
+            {
+                // fall back below
+            }
+        }
+
+        var getKey = LegacyGetMouseButton?.DeclaringType?.GetMethod("GetKey", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(UnityEngine.KeyCode) }, null);
+        try
+        {
+            return getKey is not null && ((bool)getKey.Invoke(null, new object[] { UnityEngine.KeyCode.LeftShift }) || (bool)getKey.Invoke(null, new object[] { UnityEngine.KeyCode.RightShift }));
+        }
+        catch (TargetInvocationException)
+        {
+            return false;
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
+
     /// <summary>Whether the left or right mouse button is held.</summary>
     public static bool Held()
     {

@@ -68,14 +68,14 @@ public interface IOverlayRenderer
     IReadOnlyList<Rect> Occupied { get; }
 
     /// <summary>
-    /// Where the open prompt's text field is, in screen pixels from the top-left, or null when none is shown (a mouse
-    /// press inside it keeps typing; anywhere else pauses it).
+    /// Where the text boxes it draws are, in screen pixels from the top-left, with their boxes (a mouse press inside one
+    /// is the box's; anywhere else blurs the focused box).
     /// </summary>
-    Rect? TextField { get; }
+    IReadOnlyList<(Rect Rect, TextBox Box)> TextFields { get; }
 
     /// <summary>
-    /// Whether it handles the mouse wheel over the prompt's text field itself (where its events arrive); otherwise the
-    /// overlay's input does, by the pointer's position over <see cref="TextField"/>.
+    /// Whether it handles the mouse wheel over text boxes itself (where its events arrive); otherwise the
+    /// overlay's input does, by the pointer's position over <see cref="TextFields"/>.
     /// </summary>
     bool HandlesWheel { get; }
 

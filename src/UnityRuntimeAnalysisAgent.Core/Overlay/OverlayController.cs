@@ -82,7 +82,8 @@ public sealed partial class OverlayController
         Settings = settings;
         Model = new OverlayModel(settings, writer);
         Toasts = new ToastQueue(() => Settings.Toasts);
-        Prompts = new PromptRegistry();
+        Prompts = new PromptRegistry(Keyboard);
+        Wheel.Gap = settings.WheelLatch;
         Highlights = new HighlightSet();
         Selection = new SelectionModel();
         Lock = new InspectorLock(modes, settings.InspectorStartsLocked);
@@ -103,6 +104,12 @@ public sealed partial class OverlayController
 
     /// <summary>The notifications.</summary>
     public ToastQueue Toasts { get; }
+
+    /// <summary>Which text box has the overlay's keyboard.</summary>
+    public KeyboardFocus Keyboard { get; } = new();
+
+    /// <summary>Which scroller gets the mouse wheel (text boxes or the panels around them).</summary>
+    public WheelLatch Wheel { get; } = new();
 
     /// <summary>The prompts waiting for the user.</summary>
     public PromptRegistry Prompts { get; }

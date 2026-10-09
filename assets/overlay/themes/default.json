@@ -73,7 +73,10 @@
     "danger:hover": { "background-color": "#8C2626" },
     "toast": { "flex-direction": "row", "align-items": "center", "padding": "$space.2 $space.3", "margin-top": "$space.2", "background-color": "$color.surface-2", "border-color": "$color.border", "border-width": "1", "border-radius": "$radius.md", "max-width": "360" },
     "card": { "background-color": "$color.surface", "border-color": "$color.accent-dim", "border-width": "1", "border-radius": "$radius.md", "padding": "$space.3" },
-    "arrow": { "width": "$size.arrow", "height": "$size.arrow" }
+    "arrow": { "width": "$size.arrow", "height": "$size.arrow" },
+    "section": { "color": "$color.accent", "font": "pixel", "font-size": "$size.body", "white-space": "nowrap", "padding-top": "$space.2" },
+    "tooltip": { "padding": "$space.2 $space.3", "background-color": "$color.surface-2", "border-color": "$color.accent-dim", "border-width": "1", "border-radius": "$radius.sm", "max-width": "320" },
+    "tooltip-text": { "color": "$color.text", "font": "pixel", "font-size": "$size.body" }
   },
   "effects": {
     "header": { "kind": "water", "colorA": "#0F1218", "colorB": "#1E5C80", "pixels": "48", "speed": "0.6" },

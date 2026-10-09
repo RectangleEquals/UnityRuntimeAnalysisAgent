@@ -54,7 +54,10 @@ public sealed class RenderNode
     /// <inheritdoc cref="Command"/>
     public JsonObject? Args { get; internal set; }
 
-    /// <summary>Whether it takes pointer and focus (buttons, toggles, rows with commands, inputs).</summary>
+    /// <summary>Its tooltip (bindings filled in), or null.</summary>
+    public string? Tooltip { get; internal set; }
+
+    /// <summary>Whether it takes pointer and focus (buttons, toggles, rows with commands, inputs, nodes with a tooltip).</summary>
     public bool Interactive { get; internal set; }
 
     /// <summary>Whether its children are clipped to it (scrolling lists, overflow: hidden).</summary>
@@ -112,6 +115,8 @@ public sealed class ViewPresenter
     private readonly Dictionary<string, double> _assumed = new(StringComparer.Ordinal);
 
     /// <summary>Creates the presenter.</summary>
+    private IReadOnlyDictionary<string, double> _groups = new Dictionary<string, double>();
+
     public ViewPresenter(Theme theme, ITextMeasurer measurer)
     {
         _theme = theme;
@@ -152,6 +157,11 @@ public sealed class ViewPresenter
     public RenderNode Present(ViewDocument view, JsonValue? data, double width, double height)
     {
         RenderNode root;
+        _groups = SizeGroups.Measure(view.Root, data, _theme, (node, text) =>
+        {
+            var style = _theme.Resolve(node);
+            return _measurer.Measure(text, style.Font, style.FontSize, double.PositiveInfinity, true).Width;
+        });
         for (var pass = 0; ; pass++)
         {
             _assumed.Clear();
@@ -198,13 +208,18 @@ public sealed class ViewPresenter
         }
 
         var style = _theme.Resolve(node, state);
+        if (node.SizeGroup is { } group && _groups.TryGetValue(group, out var groupWidth))
+        {
+            style.Layout.Width = Length.Px(groupWidth); // the group's width (SizeGroups)
+        }
         var render = new RenderNode(node, path, style, state, item)
         {
             Text = node.Text is null ? null : Bindings.Text(node.Text, data, item),
             Value = node.Bind is null ? null : Bindings.Value(node.Bind, data, item),
             Command = node.Command,
             Args = node.Args is null ? null : ResolveArgs(node.Args, data, item),
-            Interactive = node.Command is not null || node.Type is NodeType.Toggle or NodeType.Slider or NodeType.TextField or NodeType.Dropdown,
+            Tooltip = node.Tooltip is null ? null : Bindings.Text(node.Tooltip, data, item) is { Length: > 0 } tip ? tip : null,
+            Interactive = node.Command is not null || node.Tooltip is not null || node.Type is NodeType.Toggle or NodeType.Slider or NodeType.TextField or NodeType.Dropdown,
             Clips = style.Layout.Overflow != Overflow.Visible,
         };
         if (render.Text is { Length: > 0 } text && node.Type is NodeType.Text or NodeType.Button or NodeType.Badge or NodeType.Toggle)

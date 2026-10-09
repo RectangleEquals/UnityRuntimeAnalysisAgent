@@ -60,6 +60,9 @@ public interface IConfigWriter
 /// </summary>
 public sealed class OverlaySettings
 {
+    /// <summary>The tabs <c>Overlay.VisibleTabs</c> can't hide.</summary>
+    public static readonly IReadOnlyList<string> AlwaysVisibleTabs = new[] { "status", "activity", "control" };
+
     /// <summary>The tabs, in display order.</summary>
     public static readonly IReadOnlyList<string> AllTabs = new[] { "status", "activity", "inspector", "pinned", "instrumentation", "mods", "logs", "control", "settings" };
 
@@ -109,6 +112,31 @@ public sealed class OverlaySettings
     /// keyboard hook for input read outside Unity), unity (Unity's input systems only) or off.
     /// </summary>
     public string KeyboardCapture { get; set; } = "auto";
+
+    /// <summary>How long the mouse wheel must rest before a text box can take it from what it was scrolling, in seconds.</summary>
+    public double WheelLatch { get; set; } = 0.5;
+
+    /// <summary>A drag-selection held just past a text box's edge scrolls it this fast, in lines per second.</summary>
+    public double DragScrollStartSpeed { get; set; } = 2;
+
+    /// <summary>The fastest a drag-selection held past a text box's edge scrolls it, in lines per second.</summary>
+    public double DragScrollTopSpeed { get; set; } = 80;
+
+    /// <summary>How far past a text box's edge, in line heights, drag-scrolling reaches <see cref="DragScrollTopSpeed"/>.</summary>
+    public double DragScrollRampDistance { get; set; } = 5;
+
+    /// <summary>
+    /// How fast a drag-selection held <paramref name="linesOutside"/> line heights past a text box's top or bottom
+    /// scrolls it, in lines per second: from <see cref="DragScrollStartSpeed"/> at the edge to
+    /// <see cref="DragScrollTopSpeed"/> at <see cref="DragScrollRampDistance"/>, on an ease-out quart curve (it rises
+    /// quickly at first, then levels off).
+    /// </summary>
+    public double DragScrollRate(double linesOutside)
+    {
+        var t = Math.Max(0, Math.Min(1, Math.Abs(linesOutside) / Math.Max(0.01, DragScrollRampDistance)));
+        var eased = 1 - Math.Pow(1 - t, 4);
+        return DragScrollStartSpeed + ((Math.Max(DragScrollStartSpeed, DragScrollTopSpeed) - DragScrollStartSpeed) * eased);
+    }
 
     /// <summary>Show and free the cursor while expanded.</summary>
     public bool ForceCursorWhenExpanded { get; set; } = true;
@@ -176,6 +204,10 @@ public sealed class OverlaySettings
         s.BlockUiClicks = s.Bool(source, "BlockUiClicks", s.BlockUiClicks);
         s.BlockWorldInput = s.Bool(source, "BlockWorldInput", s.BlockWorldInput);
         s.KeyboardCapture = s.Word(source, "KeyboardCapture", s.KeyboardCapture, "auto", "unity", "off");
+        s.WheelLatch = s.Number(source, "WheelLatch", s.WheelLatch, 0.1, 1);
+        s.DragScrollStartSpeed = s.Number(source, "DragScrollStartSpeed", s.DragScrollStartSpeed, 0.25, 10);
+        s.DragScrollTopSpeed = s.Number(source, "DragScrollTopSpeed", s.DragScrollTopSpeed, 30, 100);
+        s.DragScrollRampDistance = s.Number(source, "DragScrollRampDistance", s.DragScrollRampDistance, 0.5, 15);
         s.ForceCursorWhenExpanded = s.Bool(source, "ForceCursorWhenExpanded", s.ForceCursorWhenExpanded);
         s.InspectorStartsLocked = s.Bool(source, "InspectorStartsLocked", s.InspectorStartsLocked);
         s.LocalTimeControl = s.Bool(source, "LocalTimeControl", s.LocalTimeControl);
@@ -322,8 +354,9 @@ public sealed class OverlaySettings
             _warnings.Add($"Overlay.VisibleTabs: '{unknown}' isn't a tab ({string.Join(", ", AllTabs)}); ignored.");
         }
 
-        // Status and Control always stay: they hold the health view and E-STOP.
-        var tabs = AllTabs.Where(t => wanted.Contains(t) || t is "status" or "control").ToList();
+        // Status, Activity and Control always stay: the health view, the questions and notifications (with the panel open,
+        // prompts are answered only there), and E-STOP.
+        var tabs = AllTabs.Where(t => wanted.Contains(t) || AlwaysVisibleTabs.Contains(t)).ToList();
         return tabs;
     }
 }

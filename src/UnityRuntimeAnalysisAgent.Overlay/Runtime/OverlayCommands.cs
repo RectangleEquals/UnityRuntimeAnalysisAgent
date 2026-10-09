@@ -36,9 +36,8 @@ public sealed class OverlayCommands
             }
         });
         Register("prompt.answer", args => _controller.Prompts.Answer(Text(args, "id"), Text(args, "button")));
-        Register("prompt.sendText", _ => _controller.Prompts.SendText());
-        Register("prompt.cancelText", _ => _controller.Prompts.CancelText());
-        Register("prompt.focusText", _ => _controller.Prompts.Focus());
+        Register("prompt.sendText", args => _controller.Prompts.SendText(Text(args, "id")));
+        Register("prompt.cancelText", args => _controller.Prompts.CancelText(Text(args, "id")));
         Register("toast.dismiss", args =>
         {
             if (args["id"] is JsonNumber id)
@@ -84,6 +83,7 @@ public sealed class OverlayCommands
         Register("setting.toggle", args => _controller.ToggleSetting(Text(args, "key")));
         Register("setting.cycle", args => _controller.CycleSetting(Text(args, "key")));
         Register("setting.step", args => _controller.StepSetting(Text(args, "key"), args["delta"] is JsonNumber n ? (int)n.GetDouble() : 1));
+        Register("setting.slide", args => _controller.SlideSetting(Text(args, "key"), args["value"] is JsonNumber v ? v.GetDouble() : 0));
         Register("setting.edit", args => _controller.EditSetting(Text(args, "key")));
         Register("setting.reset", args => _controller.ResetSetting(Text(args, "key")));
 

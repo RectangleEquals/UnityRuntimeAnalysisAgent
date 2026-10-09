@@ -30,7 +30,7 @@ public sealed class ImguiEmergencyRenderer : IOverlayRenderer
     public IReadOnlyList<Rect> Occupied => _drawer?.Box is { } box ? new[] { box } : Array.Empty<Rect>();
 
     /// <inheritdoc />
-    public Rect? TextField => null; // the emergency view has no prompts
+    public IReadOnlyList<(Rect Rect, TextBox Box)> TextFields => Array.Empty<(Rect, TextBox)>(); // the emergency view has no text boxes
 
     /// <inheritdoc />
     public bool HandlesWheel => false;

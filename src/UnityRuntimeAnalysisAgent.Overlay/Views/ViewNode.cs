@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityLudometry.Protocol.Json;
+using UnityRuntimeAnalysisAgent.Core.Overlay;
 
 namespace UnityRuntimeAnalysisAgent.Overlay.Views;
 
@@ -133,6 +134,15 @@ public sealed class ViewNode
     /// </summary>
     public bool WrapRows { get; set; }
 
+    /// <summary>
+    /// A width group: every node with the same group gets the natural width of the group's widest member (see
+    /// <see cref="SizeGroups"/>), so a column of controls lines up.
+    /// </summary>
+    public string? SizeGroup { get; set; }
+
+    /// <summary>With <see cref="SizeGroup"/>: hidden children count toward the width too (the space stays reserved).</summary>
+    public bool Reserve { get; set; }
+
     /// <summary>A Tree item's children path.</summary>
     public string? ChildrenPath { get; set; }
 
@@ -149,13 +159,13 @@ public sealed class ViewNode
     public int? Caret { get; set; }
 
     /// <summary>
-    /// Whether this Text node is a text field (a box sized to its lines, empty ones included, focused or not); renderers
-    /// report where it is so a mouse press inside it keeps typing.
+    /// The text box this Text node shows (null for plain text): a box sized to its lines, empty ones included. Renderers
+    /// route the mouse and the wheel inside it to the box itself, and report where it is.
     /// </summary>
-    public bool TextBox { get; set; }
+    public TextBox? Box { get; set; }
 
     /// <summary>
-    /// A scrolling text field's window, in lines (Text nodes with <see cref="TextBox"/>): the text holds one more line
+    /// A scrolling text field's window, in lines (Text nodes with a <see cref="Box"/>): the text holds one more line
     /// than that, which the renderer slides into view by the field's fractional scroll; null when all the text fits.
     /// </summary>
     public int? Window { get; set; }
