@@ -232,12 +232,6 @@ public sealed partial class OverlayController
                     { "id", new JsonString(p.Id) },
                     { "button", new JsonString(b) },
                 })))) },
-            { "typing", Prompts.Editing is { } editing ? new JsonObject
-                {
-                    { "prompt", new JsonString(editing) },
-                    { "draft", new JsonString(Prompts.Draft) },
-                    { "caret", new JsonString(Environment.TickCount / 530 % 2 == 0 ? "|" : string.Empty) },
-                } : JsonNull.Instance },
             { "notifications", new JsonArray(Toasts.History.Reverse().Select(t => (JsonValue)new JsonObject
                 {
                     { "time", new JsonString(FormatAgo(now - t.ShownAt)) },

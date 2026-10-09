@@ -142,6 +142,30 @@ public sealed class ViewNode
     /// <summary>The columns (Table).</summary>
     public List<ViewColumn> Columns { get; } = new();
 
+    /// <summary>
+    /// A text field's caret (Text nodes): the character index it stands before. Renderers draw it over the text, blinking,
+    /// without moving the text; null for none.
+    /// </summary>
+    public int? Caret { get; set; }
+
+    /// <summary>
+    /// Whether this Text node is a text field (a box sized to its lines, empty ones included, focused or not); renderers
+    /// report where it is so a mouse press inside it keeps typing.
+    /// </summary>
+    public bool TextBox { get; set; }
+
+    /// <summary>
+    /// A scrolling text field's window, in lines (Text nodes with <see cref="TextBox"/>): the text holds one more line
+    /// than that, which the renderer slides into view by the field's fractional scroll; null when all the text fits.
+    /// </summary>
+    public int? Window { get; set; }
+
+    /// <summary>The scroll position (in lines, from the text's first line) the text of a scrolling field starts at.</summary>
+    public int ScrollBase { get; set; }
+
+    /// <summary>A text field's selected characters [start, end) (Text nodes): highlighted behind or over the text; null for none.</summary>
+    public (int Start, int End)? Selection { get; set; }
+
     /// <summary>A Slider's range.</summary>
     public (double Min, double Max)? Range { get; set; }
 

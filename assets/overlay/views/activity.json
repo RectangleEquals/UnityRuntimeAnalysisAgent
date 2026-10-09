@@ -1,57 +1,10 @@
 {
   "root": {
     "type": "stack",
+    "style": { "flex-grow": "1", "overflow": "scroll" },
     "children": [
       { "type": "text", "class": "heading", "text": "Questions", "visible": "overlay.promptRows" },
-      {
-        "type": "list",
-        "id": "prompt-rows",
-        "items": "overlay.promptRows",
-        "visible": "overlay.promptRows",
-        "wrapRows": true,
-        "style": { "height": "160px" },
-        "template": {
-          "type": "stack",
-          "children": [
-            {
-              "type": "text",
-              "class": "label",
-              "text": "{@.text}",
-              "visible": "@.kind==question"
-            },
-            {
-              "type": "button",
-              "text": "{@.button}",
-              "visible": "@.kind==answer",
-              "command": "prompt.answer",
-              "args": { "id": "{@.id}", "button": "{@.button}" }
-            }
-          ]
-        }
-      },
-      {
-        "type": "stack",
-        "visible": "overlay.typing",
-        "children": [
-          { "type": "text", "class": "label", "text": "Your answer (type, then Send or Enter):" },
-          {
-            "type": "stack",
-            "style": { "flex-direction": "row" },
-            "children": [
-              { "type": "text", "class": "value", "text": "{overlay.typing.draft}" },
-              { "type": "text", "class": "value", "text": "{overlay.typing.caret}", "style": { "margin-left": "$space.1", "color": "$color.accent" } }
-            ]
-          },
-          {
-            "type": "stack",
-            "style": { "flex-direction": "row" },
-            "children": [
-              { "type": "button", "text": "Send", "command": "prompt.sendText" },
-              { "type": "button", "text": "Cancel", "command": "prompt.cancelText" }
-            ]
-          }
-        ]
-      },
+      { "type": "stack", "id": "prompt-cards", "visible": "overlay.promptRows", "style": { "flex-shrink": "0" } },
       { "type": "text", "class": "heading", "text": "Jobs", "visible": "jobRows" },
       {
         "type": "list",
@@ -85,7 +38,7 @@
         "type": "list",
         "id": "requests",
         "items": "rows",
-        "style": { "height": "200px" },
+        "style": { "height": "200px", "min-height": "60px" },
         "template": { "type": "text", "class": "value", "text": "{@.text}", "style": { "white-space": "nowrap", "text-overflow": "ellipsis" } }
       },
       { "type": "text", "class": "heading", "text": "Notifications" },
@@ -95,7 +48,7 @@
         "id": "notifications",
         "items": "overlay.notifications",
         "wrapRows": true,
-        "style": { "height": "160px" },
+        "style": { "height": "160px", "min-height": "48px" },
         "template": {
           "type": "stack",
           "style": { "padding": "$space.1 0" },

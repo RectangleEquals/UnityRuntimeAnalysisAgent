@@ -26,6 +26,11 @@ public sealed class UguiRenderer : IOverlayRenderer
 
     private readonly Dictionary<string, Element> _pool = new(StringComparer.Ordinal);
     private readonly List<Rect> _occupied = new();
+    private readonly List<(object Text, GameObject Bar, int Index, double Since, GameObject[] Bands, (int Start, int End)? Selection)> _carets = new();
+    private double _fieldWidth; // the prompt's text field as last laid out, for the prompt's own wrapping
+    private string _caretKey = string.Empty;
+    private double _caretSince;
+    private Func<string, double>? _fieldMeasure;
     private double _scale = 1;
     private readonly Dictionary<string, RenderNode> _nodes = new(StringComparer.Ordinal);
     private readonly Dictionary<OverlayEdge, Texture2D> _arrows = new();
@@ -44,6 +49,7 @@ public sealed class UguiRenderer : IOverlayRenderer
     private Dictionary<string, Texture2D> _images = new(StringComparer.Ordinal);
     private string _signature = "";
     private bool _dirty = true;
+    private readonly Dictionary<string, string> _seen = new(StringComparer.Ordinal);
     private bool _dragging;
 
     /// <inheritdoc />
@@ -60,6 +66,12 @@ public sealed class UguiRenderer : IOverlayRenderer
 
     /// <inheritdoc />
     public IReadOnlyList<Rect> Occupied => _occupied;
+
+    /// <inheritdoc />
+    public Rect? TextField { get; private set; }
+
+    /// <inheritdoc />
+    public bool HandlesWheel => false;
 
     /// <inheritdoc />
     public bool TryStart(OverlayContext context, out string? reason)
@@ -106,6 +118,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         var controller = _context.Controller;
         var now = _context.Now();
         _effects?.Tick(now);
+        PlaceCarets(now);
         var signature = Signature(controller);
         if (!_dirty && signature == _signature)
         {
@@ -146,19 +159,32 @@ public sealed class UguiRenderer : IOverlayRenderer
         _canvas = null;
     }
 
-    private void OnRefreshed(string tab) => _dirty = true;
+    // A tab's periodic refresh only rebuilds the panel when its data changed (a rebuild replaces the button under a click).
+    private void OnRefreshed(string tab)
+    {
+        var data = _context?.Controller.Views.Data(tab).ToString() ?? string.Empty;
+        if (_seen.TryGetValue(tab, out var previous) && previous == data)
+        {
+            return;
+        }
+
+        _seen[tab] = data;
+        _dirty = true;
+    }
 
     private void OnModelChanged(OverlayModel model) => _dirty = true;
 
     // Everything that changes what's drawn, cheaply: redraw only when it changes.
     private string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
-        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + (c.Prompts.Editing is null ? string.Empty : PromptCard.CaretVisible ? "|on" : "|off"),
+        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + "|" + c.Prompts.Caret + "|" + c.Prompts.SelectionAnchor + "|" + c.Prompts.FirstLine + "|" + c.Prompts.ShownFirstLine + (c.Prompts.Focused ? "|typing" : string.Empty),
         _presenter?.Hovered, _presenter?.Pressed, _presenter?.Focused);
 
     private void Rebuild(OverlayController controller)
     {
         Rebuilds++;
+        _carets.Clear();
+        TextField = null;
         var settings = controller.Settings;
         var scale = settings.EffectiveScale(Screen.height);
         if (settings.RetroFonts)
@@ -292,6 +318,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         var body = _views.TryGetValue(controller.Model.Tab, out var view)
             ? view.Root
             : new ViewNode { Type = NodeType.Text, Id = "missing", Text = $"No view for the '{controller.Model.Tab}' tab ({controller.Model.Tab}.json).", Classes = { "dim" } };
+        PromptCard.Fill(body, controller.Prompts, Escape, _fieldWidth > 0 && _fieldMeasure is not null ? new FieldMetrics(_fieldWidth, _fieldMeasure) : null);
         var content = new ViewNode { Type = NodeType.Stack, Id = "content" };
         content.Style["flex-grow"] = "1";
         content.Style["overflow"] = "hidden";
@@ -311,9 +338,11 @@ public sealed class UguiRenderer : IOverlayRenderer
         var stack = new ViewNode { Type = NodeType.Stack, Id = "cards" };
         stack.Style["position"] = "absolute";
         stack.Style["width"] = "360";
-        foreach (var prompt in controller.Prompts.Pending)
+        // While the panel is open, prompts are answered in its Activity tab, not in cards on top of it.
+        var prompts = controller.Model.State == OverlayVisibility.Expanded ? Array.Empty<Prompt>() : controller.Prompts.Pending;
+        foreach (var prompt in prompts)
         {
-            stack.Children.Add(PromptCard.Build(prompt, controller.Prompts, Escape));
+            stack.Children.Add(PromptCard.Build(prompt, controller.Prompts, Escape, _fieldWidth > 0 && _fieldMeasure is not null ? new FieldMetrics(_fieldWidth, _fieldMeasure) : null));
         }
 
         foreach (var toast in controller.Toasts.Visible)
@@ -477,6 +506,120 @@ public sealed class UguiRenderer : IOverlayRenderer
         Binder.Set(component, "horizontalOverflow", style.NoWrap ? "Overflow" : "Wrap");
         Binder.Set(component, "verticalOverflow", "Truncate");
         Binder.Set(component, "text", style.Ellipsis ? Ellipsize(text, style, w) : text);
+        if (node.Source.TextBox)
+        {
+            TextField = new Rect((float)(x * _scale), (float)(y * _scale), (float)(w * _scale), (float)(h * _scale));
+        }
+
+        if (node.Source.Caret is int caret)
+        {
+            var fieldWidth = Math.Max(0, w - left - Zero(padding.Right.Resolve(w)));
+            _fieldMeasure = s => _fonts!.Measure(s, style.Font, style.FontSize, double.PositiveInfinity, true).Width;
+            if (Math.Abs(fieldWidth - _fieldWidth) > 0.5)
+            {
+                _fieldWidth = fieldWidth; // the prompt wraps its text at this width from the next build
+                _dirty = true;
+            }
+
+            var bar = Get(node.Path + "#caret", layer.Go.transform);
+            var image = Binder.Add(bar.Go, Binder.Image);
+            Binder.Set(image, "color", EffectsDriver.Rgba(style.Color));
+            Binder.Set(image, "raycastTarget", false);
+            // One selection band per line the field can show (placed in PlaceCarets).
+            var bands = new GameObject[PromptRegistry.VisibleLines + 1];
+            var tint = EffectsDriver.Rgba(style.Color);
+            tint.a = 0.3f;
+            for (var i = 0; i < bands.Length; i++)
+            {
+                var band = Get(node.Path + "#sel" + i, layer.Go.transform);
+                var fill = Binder.Add(band.Go, Binder.Image);
+                Binder.Set(fill, "color", tint);
+                Binder.Set(fill, "raycastTarget", false);
+                bands[i] = band.Go;
+            }
+
+            var key = text + "|" + caret + "|" + node.Source.Selection;
+            if (key != _caretKey)
+            {
+                _caretKey = key; // the fade starts at the last edit or caret move, not at each rebuild
+                _caretSince = _context!.Now();
+            }
+
+            _carets.Add((component, bar.Go, caret, _caretSince, bands, node.Source.Selection));
+        }
+    }
+
+    // Text fields' carets: placed at their character from the text's own generator (what Unity's input field uses: the
+    // character's cursor position and its line's top and height, wrapping included), and blinking, every frame without
+    // a rebuild. The text itself never moves.
+    private void PlaceCarets(double now)
+    {
+        foreach (var (text, bar, index, since, bands, selection) in _carets)
+        {
+            if (bar == null)
+            {
+                continue;
+            }
+
+            var group = bar.GetComponent<CanvasGroup>() ?? bar.AddComponent<CanvasGroup>();
+            var generator = text.GetType().GetProperty("cachedTextGenerator")?.GetValue(text, null) as TextGenerator;
+            if (generator == null || generator.characterCount == 0 || generator.lineCount == 0)
+            {
+                group.alpha = 0; // not laid out yet
+                continue;
+            }
+
+            var unit = text.GetType().GetProperty("pixelsPerUnit")?.GetValue(text, null) is float p && p > 0 ? p : 1f;
+            var characters = generator.characters;
+            var lines = generator.lines;
+            var at = Math.Min(index, characters.Count - 1);
+            var line = 0;
+            for (var l = 0; l < lines.Count; l++)
+            {
+                if (lines[l].startCharIdx <= at)
+                {
+                    line = l;
+                }
+            }
+
+            var rect = (RectTransform)bar.transform;
+            rect.pivot = new Vector2(0, 1);
+            rect.sizeDelta = new Vector2(1, lines[line].height / unit);
+            rect.localPosition = new Vector3(characters[at].cursorPos.x / unit, lines[line].topY / unit, 0);
+            group.alpha = CaretLayout.Opacity(now - since);
+
+            // The selection: a translucent band over each selected part of a line.
+            for (var i = 0; i < bands.Length; i++)
+            {
+                if (bands[i] == null)
+                {
+                    continue;
+                }
+
+                var band = (RectTransform)bands[i].transform;
+                band.pivot = new Vector2(0, 1);
+                band.sizeDelta = Vector2.zero;
+                if (selection is not { } s || i >= lines.Count)
+                {
+                    continue;
+                }
+
+                var lineStart = lines[i].startCharIdx;
+                var lineEnd = i + 1 < lines.Count ? lines[i + 1].startCharIdx : characters.Count - 1;
+                var from = Math.Max(s.Start, lineStart);
+                var to = Math.Min(s.End, lineEnd);
+                if (to <= from || from >= characters.Count)
+                {
+                    continue;
+                }
+
+                var last = characters[Math.Min(to, characters.Count) - 1];
+                var x0 = characters[from].cursorPos.x;
+                var x1 = Math.Max(x0 + 2 * unit, last.cursorPos.x + last.charWidth); // a selected line break shows as a sliver
+                band.sizeDelta = new Vector2((x1 - x0) / unit, lines[i].height / unit);
+                band.localPosition = new Vector3(x0 / unit, lines[i].topY / unit, 0);
+            }
+        }
     }
 
     private string Ellipsize(string text, ResolvedStyle style, double width)

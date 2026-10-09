@@ -67,6 +67,18 @@ public interface IOverlayRenderer
     /// <summary>Where it draws, in screen pixels from the top-left (pointer hover and the click blocker use them).</summary>
     IReadOnlyList<Rect> Occupied { get; }
 
+    /// <summary>
+    /// Where the open prompt's text field is, in screen pixels from the top-left, or null when none is shown (a mouse
+    /// press inside it keeps typing; anywhere else pauses it).
+    /// </summary>
+    Rect? TextField { get; }
+
+    /// <summary>
+    /// Whether it handles the mouse wheel over the prompt's text field itself (where its events arrive); otherwise the
+    /// overlay's input does, by the pointer's position over <see cref="TextField"/>.
+    /// </summary>
+    bool HandlesWheel { get; }
+
     /// <summary>Called every frame on the main thread: follows the model (state, tab data, toasts, prompts, highlights).</summary>
     void Update();
 

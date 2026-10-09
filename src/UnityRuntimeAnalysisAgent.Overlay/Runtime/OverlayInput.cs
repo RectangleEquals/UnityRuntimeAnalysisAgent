@@ -54,35 +54,24 @@ public sealed class OverlayInput : IDisposable
     /// <summary>Whether the pointer was over the overlay this frame.</summary>
     public bool PointerOver { get; private set; }
 
+    /// <summary>Where the pointer was this frame, in screen pixels from the top-left, or null.</summary>
+    public Vector2? PointerPosition => _hasPointer ? new Vector2(_pointerX, _pointerY) : null;
+
+    // Plain fields (no engine types), so this class loads outside the engine too.
+    private bool _hasPointer;
+    private float _pointerX;
+    private float _pointerY;
+
     /// <summary>The gamepad buttons held this frame (names as in <c>Overlay.GamepadToggle</c>).</summary>
     public IReadOnlyCollection<string> HeldButtons { get; private set; } = Array.Empty<string>();
-
-    /// <summary>
-    /// The characters typed this frame (the Input Manager's <c>inputString</c>), or null where the game has no Input
-    /// Manager. Used for the prompts' text fields.
-    /// </summary>
-    public string? TypedText()
-    {
-        if (!_legacyPointer)
-        {
-            return null;
-        }
-
-        try
-        {
-            return LegacyInput!.GetProperty("inputString", BindingFlags.Public | BindingFlags.Static)?.GetValue(null, null) as string;
-        }
-        catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException)
-        {
-            _legacyPointer = false; // the project switched the Input Manager off
-            return null;
-        }
-    }
 
     /// <summary>Called every frame: hover state for the patch, and the gamepad chord (which toggles the overlay).</summary>
     public void Frame(IReadOnlyList<Rect> occupied)
     {
         var pointer = Pointer();
+        _hasPointer = pointer.HasValue;
+        _pointerX = pointer?.x ?? 0;
+        _pointerY = pointer?.y ?? 0;
         PointerOver = pointer is { } p && occupied.Any(r => r.Contains(p));
         s_blocking = _harmony is not null && PointerOver;
         if (_controller.Settings.Gamepad == "off")

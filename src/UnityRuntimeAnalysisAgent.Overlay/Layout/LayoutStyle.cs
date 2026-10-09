@@ -99,6 +99,9 @@ public enum Overflow
 
     /// <summary>Clipped to the padding box.</summary>
     Hidden,
+
+    /// <summary>Clipped, and the content scrolls vertically (UI Toolkit; the other renderers clip it like hidden).</summary>
+    Scroll,
 }
 
 /// <summary>

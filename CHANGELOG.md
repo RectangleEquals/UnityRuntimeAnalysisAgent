@@ -208,3 +208,24 @@
   - Buttons with an icon size to the icon and the label together (the icon no longer covers the text), in the UI
     Toolkit and uGUI renderers. Section headings no longer shrink under the lists when the panel is short.
   - Status shows frame times as `mean ms (p95 · max)` instead of the raw value.
+- Prompt text fields work like text boxes:
+  - The answer is a multiline field: the caret sits where you type and fades in and out over the text without moving
+    it, the arrows, Home, End, Page Up/Down and Ctrl+Home/End move it along the lines as they're wrapped (Up and Down
+    keep their column), Shift with those keys selects, Ctrl+A selects all, Ctrl+C/X copy or cut the selection and
+    Ctrl+V pastes (line breaks kept). Shift+Enter adds a line; Enter sends; Esc closes the field. Answers can be
+    20000 characters long.
+  - The field shows 8 lines and scrolls: the mouse wheel over it glides its lines without moving the caret, and typing
+    glides back to the caret. A wheel movement outside the field makes it ignore the wheel until the wheel rests
+    (0.67 s), so scrolling the panel never switches to the field under the pointer.
+  - The field is a box in the theme (`field`, `field-focused`, `field-paused`). A mouse press anywhere but the field
+    pauses typing (the game gets the keyboard back, the text stays); a click on the field resumes it.
+  - While you type, the game doesn't see the keyboard (`Overlay.KeyboardCapture`, [configuration](docs/configuration.md)):
+    the Input Manager is reset at the start of each frame, the Input System package's keyboard state events are marked
+    handled, and on Windows a low-level keyboard hook holds keys back from input read outside Unity. Mouse clicks and the
+    wheel still reach the overlay.
+  - The Activity tab shows the same question cards as the ones next to the arrow, and scrolls as a whole (eased); the
+    cards next to the arrow hide while the panel is open. Views can scroll a container (`"overflow": "scroll"`, UI
+    Toolkit; other renderers clip it).
+- The overlay panel stays put under the pointer: a tab's periodic refresh rebuilds the panel only when its data changed,
+  and never while a mouse button is held or on the frame it's released, so clicks on buttons and the arrow always
+  land.

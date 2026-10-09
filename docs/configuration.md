@@ -41,6 +41,7 @@ agent logs a warning saying so.
 | `Overlay.RefreshHz` | `4` | How often the panel's contents refresh, per second. |
 | `Overlay.Toasts` | `Important` | Which notifications are shown next to the overlay. |
 | `Overlay.BlockUiClicks` | `true` | Keep clicks on the overlay from reaching the game's UI. |
+| `Overlay.KeyboardCapture` | `auto` | Keep the keyboard from the game while you type into an in-game prompt. `unity`: through Unity's input systems on every platform (the Input Manager is reset at the start of each frame, and the Input System package's keyboard events are marked handled). `auto` adds, on Windows, a low-level keyboard hook while you type, for games that read the keyboard outside Unity (some input middleware does). `off`: the game sees every key. Values: `auto`, `unity`, `off`. |
 | `Overlay.BlockWorldInput` | `false` | Keep mouse clicks over the overlay from reaching the game world (the Input Manager's mouse-button queries; games that only use the Input System package aren't covered). |
 | `Overlay.ForceCursorWhenExpanded` | `true` | Show and free the mouse cursor while the overlay is expanded. |
 | `Overlay.InspectorStartsLocked` | `true` | The inspector starts locked (no edits until unlocked). |

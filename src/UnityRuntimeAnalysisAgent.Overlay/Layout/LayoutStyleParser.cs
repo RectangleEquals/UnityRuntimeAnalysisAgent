@@ -91,7 +91,7 @@ public static class LayoutStyleParser
             case "display":
                 return Enum(value, v => style.Display = v, ("flex", Display.Flex), ("none", Display.None));
             case "overflow":
-                return Enum(value, v => style.Overflow = v, ("visible", Overflow.Visible), ("hidden", Overflow.Hidden));
+                return Enum(value, v => style.Overflow = v, ("visible", Overflow.Visible), ("hidden", Overflow.Hidden), ("scroll", Overflow.Scroll));
             default:
                 return $"'{name}' isn't a supported layout property (UI Toolkit's flexbox subset only; for example no gap or order).";
         }

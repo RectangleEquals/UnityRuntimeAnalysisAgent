@@ -104,6 +104,12 @@ public sealed class OverlaySettings
     /// <summary>Keep mouse input over the overlay from reaching the game world (a narrow patch; off by default).</summary>
     public bool BlockWorldInput { get; set; }
 
+    /// <summary>
+    /// Keeping the keyboard from the game while typing into the overlay: auto (Unity's input systems, plus a Windows
+    /// keyboard hook for input read outside Unity), unity (Unity's input systems only) or off.
+    /// </summary>
+    public string KeyboardCapture { get; set; } = "auto";
+
     /// <summary>Show and free the cursor while expanded.</summary>
     public bool ForceCursorWhenExpanded { get; set; } = true;
 
@@ -169,6 +175,7 @@ public sealed class OverlaySettings
         s.Toasts = s.Choice(source, "Toasts", s.Toasts);
         s.BlockUiClicks = s.Bool(source, "BlockUiClicks", s.BlockUiClicks);
         s.BlockWorldInput = s.Bool(source, "BlockWorldInput", s.BlockWorldInput);
+        s.KeyboardCapture = s.Word(source, "KeyboardCapture", s.KeyboardCapture, "auto", "unity", "off");
         s.ForceCursorWhenExpanded = s.Bool(source, "ForceCursorWhenExpanded", s.ForceCursorWhenExpanded);
         s.InspectorStartsLocked = s.Bool(source, "InspectorStartsLocked", s.InspectorStartsLocked);
         s.LocalTimeControl = s.Bool(source, "LocalTimeControl", s.LocalTimeControl);

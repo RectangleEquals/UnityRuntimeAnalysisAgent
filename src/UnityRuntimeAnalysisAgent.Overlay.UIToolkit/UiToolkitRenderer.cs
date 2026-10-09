@@ -34,6 +34,20 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
     private readonly HashSet<string> _expanded = new(StringComparer.Ordinal);
     private readonly Dictionary<OverlayEdge, Texture2D> _arrows = new();
     private readonly List<Rect> _occupied = new();
+    private readonly List<(VisualElement Bar, double Since)> _carets = new();
+    private Label? _measure; // hidden, styled like the text field: measures its lines for the prompt's wrapping
+    private VisualElement? _field; // the prompt's text field as last built
+    private VisualElement? _fieldSheet; // its text, slid by the field's scroll every frame
+    private int _fieldBase; // the scroll line its text starts at
+    private float _fieldAdvance; // its line height
+    private string _caretKey = string.Empty;
+    private double _caretSince;
+    private bool _heldLastFrame;
+    private float? _tabTarget; // where the tab's scroll view is easing to
+    private ScrollView? _tabScroller; // the tab's scroll view as last built
+    private IVisualElementScheduledItem? _tabTicker;
+    private bool _restoring; // a rebuild's scroll positions aren't restored yet
+    private double _fieldWidth;
     private OverlayContext? _context;
     private GameObject? _host;
     private UIDocument? _document;
@@ -47,6 +61,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
     private readonly Dictionary<string, Sprite> _iconSprites = new(StringComparer.Ordinal);
     private string _signature = "";
     private bool _dirty = true;
+    private readonly Dictionary<string, string> _seen = new(StringComparer.Ordinal);
     private int _frames;
     private bool _dragging;
     private Vector2 _dragStart;
@@ -80,6 +95,25 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             }
 
             return _occupied;
+        }
+    }
+
+    /// <inheritdoc />
+    public bool HandlesWheel => true; // decided where the wheel event arrives (see CaretText and SmoothWheel)
+
+    /// <inheritdoc />
+    public Rect? TextField
+    {
+        get
+        {
+            if (_field?.panel is null || _settings == null)
+            {
+                return null;
+            }
+
+            var r = _field.worldBound;
+            var scale = _settings.scale;
+            return float.IsNaN(r.width) ? null : new Rect(r.x * scale, r.y * scale, r.width * scale, r.height * scale);
         }
     }
 
@@ -142,6 +176,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             _probe.AddToClassList("ov-probe");
             _probe.style.position = Position.Absolute;
             root.Add(_probe);
+
         }
 
         // The self-check: the theme's probe rule must resolve (it doesn't when Unity can't read the theme).
@@ -159,6 +194,17 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
         var controller = _context.Controller;
         _effects?.Tick(_context.Now());
+        if (_fieldSheet?.panel is not null && _fieldAdvance > 0)
+        {
+            // The field's fractional scroll, every frame without a rebuild (a rebuild happens at each whole line).
+            var offset = (float)((_context.Controller.Prompts.ShownLine - _fieldBase) * _fieldAdvance);
+            _fieldSheet.style.translate = new StyleTranslate(new Translate(0, -offset, 0));
+        }
+
+        foreach (var (bar, since) in _carets)
+        {
+            bar.style.opacity = CaretLayout.Opacity(_context.Now() - since); // fades without a rebuild
+        }
         var settings = controller.Settings;
         var scale = settings.EffectiveScale(Screen.height);
         if (settings.RetroFonts)
@@ -174,7 +220,15 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
         var signature = Signature(controller);
         var typing = root.focusController?.focusedElement is TextField;
-        if ((!_dirty && signature == _signature) || typing)
+        // Rebuilding replaces every element, so a press held across a rebuild never becomes a click (and hover resets).
+        // A click needs its press and release on the same element: no rebuild while a mouse button is held over the
+        // overlay (read from the mouse itself; a drag of the arrow still moves it).
+        // ... and one more frame after the release, which UI Toolkit delivers after this rebuild would have replaced the
+        // element under it (a lost click).
+        var held = PointerButtons.Held();
+        var holding = !_dragging && (held || _heldLastFrame);
+        _heldLastFrame = held;
+        if ((!_dirty && signature == _signature) || typing || holding)
         {
             return;
         }
@@ -222,21 +276,280 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         _host = null;
         _document = null;
         _layer = null;
+        _tabTicker = null;
+        _tabScroller = null;
+        _tabTarget = null;
     }
 
-    private void OnRefreshed(string tab) => _dirty = true;
+    // A text field's text with its caret drawn over it. The text is wrapped here, with the label's own measurement, so the
+    // caret's line and column come from the same line breaks as the text on screen; the caret is a thin bar in the text's
+    // colour (blinking in Update) that never moves the text.
+    private VisualElement CaretText(string text, int? caret, ViewNode node)
+    {
+        if (_measure is null && _document != null)
+        {
+            _measure = new Label { enableRichText = false, pickingMode = PickingMode.Ignore };
+            _measure.style.position = Position.Absolute;
+            _measure.style.visibility = Visibility.Hidden;
+            _document.rootVisualElement.Add(_measure);
+        }
+
+        if (_measure is not null)
+        {
+            Apply(_measure, node, NodeState.None); // the field's font, size and spacing
+            _measure.style.position = Position.Absolute;
+            _measure.style.visibility = Visibility.Hidden;
+        }
+
+        // box (the field's look and padding) > clip (the window of lines) > sheet (the text with its caret and selection,
+        // slid every frame by the field's scroll, a fraction of a line at a time: see Update).
+        var box = new VisualElement();
+        _field = box;
+        box.RegisterCallback<WheelEvent>(e =>
+        {
+            // The field's wheel: decided here, where the event arrives (see ClaimWheel), so a gesture is never split.
+            if (_context is null)
+            {
+                return;
+            }
+
+            if (_context.Controller.Prompts.ClaimWheel(overField: true, _context.Now()))
+            {
+                _context.Controller.Prompts.ScrollLines(e.delta.y > 0 ? 3 : -3);
+                e.StopPropagation();
+            }
+            else if (box.GetFirstAncestorOfType<ScrollView>() is { } tab)
+            {
+                WheelTab(tab, e.delta.y); // a gesture that began on the tab keeps scrolling the tab
+                e.StopPropagation();
+            }
+        });
+        var clip = new VisualElement { pickingMode = PickingMode.Ignore };
+        clip.style.overflow = Overflow.Hidden;
+        var sheet = new VisualElement { pickingMode = PickingMode.Ignore };
+        clip.Add(sheet);
+        box.Add(clip);
+        var label = new Label(text) { enableRichText = false, pickingMode = PickingMode.Ignore };
+        label.style.whiteSpace = WhiteSpace.NoWrap;
+        label.style.paddingLeft = label.style.paddingRight = label.style.paddingTop = label.style.paddingBottom = 0;
+        label.style.marginLeft = label.style.marginRight = label.style.marginTop = label.style.marginBottom = 0;
+        var bar = new VisualElement { name = "ov-caret", pickingMode = PickingMode.Ignore };
+        bar.style.position = Position.Absolute;
+        bar.style.width = 1;
+        sheet.Add(label);
+        sheet.Add(bar);
+        var moved = false; // the text or the caret changed in this build (the tab then follows the caret)
+        if (caret is null)
+        {
+            bar.style.display = DisplayStyle.None; // paused, or scrolled out of view: no caret
+        }
+        else
+        {
+            var key = text + "|" + caret + "|" + node.Selection;
+            moved = key != _caretKey;
+            _carets.Add((bar, CaretSince(key)));
+        }
+
+        _fieldSheet = sheet;
+        _fieldBase = node.ScrollBase;
+        if (_fieldAdvance > 0 && _context is not null)
+        {
+            sheet.style.translate = new StyleTranslate(new Translate(0, -(float)((_context.Controller.Prompts.ShownLine - _fieldBase) * _fieldAdvance), 0));
+        }
+        var laidOut = -1f;
+        box.RegisterCallback<GeometryChangedEvent>(_ =>
+        {
+            var width = box.contentRect.width;
+            if (width <= 0 || Math.Abs(width - laidOut) < 0.5f)
+            {
+                return;
+            }
+
+            laidOut = width;
+            if (Math.Abs(width - _fieldWidth) > 0.5f)
+            {
+                _fieldWidth = width; // the prompt wraps its text at this width from the next build
+                _dirty = true;
+            }
+
+            Vector2 Size(string s) => label.MeasureTextSize(s, 0, VisualElement.MeasureMode.Undefined, 0, VisualElement.MeasureMode.Undefined);
+            var lines = CaretLayout.Wrap(text, width, s => Size(s).x);
+            label.text = string.Join("\n", lines.Select(l => CaretLayout.LineText(text, l)).ToArray());
+            var (line, column) = CaretLayout.Locate(lines, caret ?? 0);
+            var height = Size("Ag").y;
+            var advance = Size("Ag\nAg").y - height;
+            _fieldAdvance = advance;
+            label.style.minHeight = height + (lines.Count - 1) * advance; // every line counts, empty ones included
+            if (node.Window is int window)
+            {
+                clip.style.height = height + (window - 1) * advance; // the window; the extra line slides in below it
+            }
+
+            // Text measurement leaves out leading and trailing spaces: measure with a closing character, then take that
+            // character off, so spaces count.
+            float X(string lineText, int count) => count <= 0 ? 0 : Size(lineText.Substring(0, Math.Min(count, lineText.Length)) + "|").x - Size("|").x;
+            bar.style.left = X(CaretLayout.LineText(text, lines[line]), column);
+            bar.style.top = line * advance;
+            bar.style.height = height;
+            bar.style.backgroundColor = label.resolvedStyle.color;
+            // After an edit, the tab keeps the field's window in view (the field's own scrolling keeps the caret inside it):
+            // the caret itself isn't where it'll be until the field's glide catches up, and chasing it ran the tab off.
+            if (moved && box.GetFirstAncestorOfType<ScrollView>() is { } scroller)
+            {
+                box.schedule.Execute(() => GlideIntoView(scroller, clip)); // after the restored scroll position
+            }
+
+            // The selection: a translucent band behind each selected part of a line.
+            if (node.Selection is { } selection)
+            {
+                var color = label.resolvedStyle.color;
+                for (var i = 0; i < lines.Count; i++)
+                {
+                    var lineText = CaretLayout.LineText(text, lines[i]);
+                    var from = Math.Max(selection.Start, lines[i].Start) - lines[i].Start;
+                    var to = Math.Min(selection.End, lines[i].Start + lineText.Length) - lines[i].Start;
+                    var throughBreak = selection.Start <= lines[i].Start + lineText.Length && selection.End > lines[i].Start + lineText.Length;
+                    if (to <= from && !throughBreak)
+                    {
+                        continue;
+                    }
+
+                    var x0 = X(lineText, from);
+                    var x1 = Math.Max(x0, X(lineText, to)) + (throughBreak ? Size("|").x : 0); // a selected line break shows as a sliver
+                    var band = new VisualElement { pickingMode = PickingMode.Ignore };
+                    band.style.position = Position.Absolute;
+                    band.style.left = x0;
+                    band.style.top = i * advance;
+                    band.style.width = x1 - x0;
+                    band.style.height = height;
+                    band.style.backgroundColor = new Color(color.r, color.g, color.b, 0.3f);
+                    sheet.Insert(0, band); // behind the text
+                }
+            }
+        });
+        return box;
+    }
+
+    // When the field's caret fade starts: at the last change of its text, caret or selection, not at each rebuild (the
+    // Activity tab rebuilds as its data changes, which would keep restarting the fade).
+    private double CaretSince(string key)
+    {
+        if (key != _caretKey)
+        {
+            _caretKey = key;
+            _caretSince = _context!.Now();
+        }
+
+        return _caretSince;
+    }
+
+    // A scroll view's wheel scrolling, eased toward its target instead of jumping a step per notch (the field's own
+    // wheel gesture is left to the field).
+    private void SmoothWheel(ScrollView view)
+    {
+        // A scrollbar that comes and goes changes the content's width, which re-wraps a text field, which rebuilds the
+        // panel without it, which makes it come back: always shown, the width stays put.
+        view.verticalScrollerVisibility = ScrollerVisibility.AlwaysVisible;
+        view.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        view.RegisterCallback<WheelEvent>(e =>
+        {
+            var onField = _field is { } field && e.target is VisualElement target && (target == field || field.Contains(target));
+            if (onField)
+            {
+                return; // the field's own handler decides (a gesture that began on the tab comes back here)
+            }
+
+            _context?.Controller.Prompts.ClaimWheel(overField: false, _context.Now());
+            WheelTab(view, e.delta.y);
+            e.StopPropagation(); // instead of the scroll view's own jump
+        }, TrickleDown.TrickleDown);
+        _tabScroller = view;
+        if (_tabTicker is null && _document != null)
+        {
+            _tabTicker = _document.rootVisualElement.schedule.Execute(TabTick).Every(16);
+        }
+    }
+
+    // Eases the tab's scroll view toward its target. One ticker for the renderer's lifetime (rebuilds replace the scroll
+    // view; a ticker per view piled up and played wheel input back later), idle until a rebuild's scroll position is
+    // restored (it would start from the new view's top).
+    private void TabTick()
+    {
+        if (_tabTarget is not { } target || _tabScroller?.panel is null || _restoring)
+        {
+            return;
+        }
+
+        var view = _tabScroller;
+        var y = view.scrollOffset.y;
+        var next = y + ((target - y) * 0.3f);
+        if (Math.Abs(target - next) < 0.5f)
+        {
+            next = target;
+            _tabTarget = null;
+        }
+
+        view.scrollOffset = new Vector2(view.scrollOffset.x, next);
+    }
+
+    // The tab's wheel step: its target moves, and SmoothWheel's ticker eases there.
+    private void WheelTab(ScrollView view, float deltaY)
+    {
+        var max = Math.Max(0f, view.contentContainer.layout.height - view.contentViewport.layout.height);
+        _tabTarget = Mathf.Clamp((_tabTarget ?? view.scrollOffset.y) + (deltaY * 18f), 0f, max);
+    }
+
+    // Scrolls a scroll view just enough to show an element, easing there (SmoothWheel's glide).
+    private void GlideIntoView(ScrollView scroller, VisualElement target)
+    {
+        var view = scroller.contentViewport.worldBound;
+        var r = target.worldBound;
+        var delta = r.yMin < view.yMin ? r.yMin - view.yMin : r.yMax > view.yMax ? r.yMax - view.yMax : 0f;
+        if (Math.Abs(delta) < 0.5f || float.IsNaN(delta))
+        {
+            return;
+        }
+
+        var max = Math.Max(0f, scroller.contentContainer.layout.height - scroller.contentViewport.layout.height);
+        _tabTarget = Mathf.Clamp(scroller.scrollOffset.y + delta, 0f, max);
+    }
+
+    // The text field's measurement for the prompt's own wrapping, once the field has been laid out.
+    private FieldMetrics? FieldMetrics()
+    {
+        var measure = _measure;
+        return _fieldWidth > 0 && measure is not null
+            ? new FieldMetrics(_fieldWidth, s => measure.MeasureTextSize(s, 0, VisualElement.MeasureMode.Undefined, 0, VisualElement.MeasureMode.Undefined).x, slides: true)
+            : null;
+    }
+
+    // A tab's periodic refresh only rebuilds the panel when its data changed.
+    private void OnRefreshed(string tab)
+    {
+        var data = _context?.Controller.Views.Data(tab).ToString() ?? string.Empty;
+        if (_seen.TryGetValue(tab, out var previous) && previous == data)
+        {
+            return;
+        }
+
+        _seen[tab] = data;
+        _dirty = true;
+    }
 
     private void OnModelChanged(OverlayModel model) => _dirty = true;
 
     private static string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
-        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + (c.Prompts.Editing is null ? string.Empty : PromptCard.CaretVisible ? "|on" : "|off"));
+        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Id)) + "|" + c.Prompts.Editing + "|" + c.Prompts.Draft + "|" + c.Prompts.Caret + "|" + c.Prompts.SelectionAnchor + "|" + c.Prompts.FirstLine + (c.Prompts.Focused ? "|typing" : string.Empty)); // not the glide: it slides without rebuilds
 
     private void Rebuild(OverlayController controller, double width, double height)
     {
         Rebuilds++;
         SaveScroll(_layer!);
         _layer!.Clear();
+        _carets.Clear();
+        _field = null;
+        _fieldSheet = null;
         var model = controller.Model;
         if (model.State == OverlayVisibility.Hidden)
         {
@@ -365,6 +678,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         var body = _views.TryGetValue(controller.Model.Tab, out var view)
             ? view.Root
             : new ViewNode { Type = NodeType.Text, Id = "missing", Text = $"No view for the '{controller.Model.Tab}' tab ({controller.Model.Tab}.json).", Classes = { "dim" } };
+        PromptCard.Fill(body, controller.Prompts, Escape, FieldMetrics()); // the Activity tab's Questions
         var content = new ViewNode { Type = NodeType.Stack, Id = "content" };
         content.Style["flex-grow"] = "1";
         content.Style["overflow"] = "hidden";
@@ -380,15 +694,17 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
     private VisualElement? Cards(OverlayController controller)
     {
-        if (controller.Prompts.Pending.Count == 0 && controller.Toasts.Visible.Count == 0)
+        // While the panel is open, prompts are answered in its Activity tab, not in cards on top of it.
+        var prompts = controller.Model.State == OverlayVisibility.Expanded ? Array.Empty<Prompt>() : controller.Prompts.Pending;
+        if (prompts.Count == 0 && controller.Toasts.Visible.Count == 0)
         {
             return null;
         }
 
         var stack = new ViewNode { Type = NodeType.Stack, Id = "cards" };
-        foreach (var prompt in controller.Prompts.Pending)
+        foreach (var prompt in prompts)
         {
-            stack.Children.Add(PromptCard.Build(prompt, controller.Prompts, Escape));
+            stack.Children.Add(PromptCard.Build(prompt, controller.Prompts, Escape, FieldMetrics()));
         }
 
         foreach (var toast in controller.Toasts.Visible)
@@ -417,6 +733,9 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         VisualElement element;
         switch (node.Type)
         {
+            case NodeType.Text when node.TextBox:
+                element = CaretText(text ?? string.Empty, node.Caret, node);
+                break;
             case NodeType.Text:
             case NodeType.Badge:
                 element = new Label(text ?? string.Empty) { enableRichText = false };
@@ -492,7 +811,18 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
                 break;
             default:
-                element = new VisualElement();
+                // overflow: scroll is a vertical scroll view (its children go into its content container)
+                if (node.Style.TryGetValue("overflow", out var overflow) && overflow == "scroll")
+                {
+                    var scroller = new ScrollView(ScrollViewMode.Vertical);
+                    SmoothWheel(scroller);
+                    element = scroller;
+                }
+                else
+                {
+                    element = new VisualElement();
+                }
+
                 break;
         }
 
@@ -802,7 +1132,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         s.borderRightWidth = Pixels(layout.Border.Right);
         s.borderBottomWidth = Pixels(layout.Border.Bottom);
         s.display = layout.Display == Layout.Display.None ? DisplayStyle.None : DisplayStyle.Flex;
-        s.overflow = layout.Overflow == Layout.Overflow.Hidden || resolved.Ellipsis ? Overflow.Hidden : Overflow.Visible;
+        s.overflow = layout.Overflow != Layout.Overflow.Visible || resolved.Ellipsis ? Overflow.Hidden : Overflow.Visible;
         s.color = Rgba(resolved.Color);
         s.backgroundColor = Rgba(resolved.BackgroundColor);
         s.borderLeftColor = s.borderTopColor = s.borderRightColor = s.borderBottomColor = Rgba(resolved.BorderColor);
@@ -892,14 +1222,22 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         }
     });
 
-    private void RestoreScroll(VisualElement root) => root.schedule.Execute(() => root.Query<ScrollView>().ForEach(v =>
+    private void RestoreScroll(VisualElement root)
     {
-        var key = v.parent?.name ?? v.name;
-        if (!string.IsNullOrEmpty(key) && _scroll.TryGetValue(key, out var offset))
+        _restoring = true;
+        root.schedule.Execute(() =>
         {
-            v.scrollOffset = offset;
-        }
-    }));
+            root.Query<ScrollView>().ForEach(v =>
+            {
+                var key = v.parent?.name ?? v.name;
+                if (!string.IsNullOrEmpty(key) && _scroll.TryGetValue(key, out var offset))
+                {
+                    v.scrollOffset = offset;
+                }
+            });
+            _restoring = false;
+        });
+    }
 
     private void LoadIcons(string overlayDir)
     {

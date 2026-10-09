@@ -62,6 +62,13 @@ IL2CPP games aren't supported in this version.
   after launch with the agent installed.
 - **Pausing uses the time scale.** `time.pause` and `time.step` set `Time.timeScale`, so gameplay driven by unscaled
   time or a game's own clock keeps going.
+- **Holding the keyboard back while typing into the overlay is complete on Windows only.** Unity's Input Manager and
+  the Input System package are held back on every platform. Input libraries that read the keyboard outside Unity are
+  held back by a Windows keyboard hook (`Overlay.KeyboardCapture = auto`); on other platforms such games still see the
+  keys typed into an overlay prompt. Some anti-cheat software dislikes keyboard hooks: set `unity` to leave it out.
+- **Smooth scrolling is UI Toolkit's.** In the uGUI renderer (games before UI Toolkit's runtime support) a prompt's text
+  field scrolls a whole line at a time, and views that ask to scroll a container (`"overflow": "scroll"`) are clipped
+  instead.
 - **Rules' overlay parts wait for the overlay.** The `prompt` and `pick` conditions never occur and the `notify` and
   `highlight` actions show nothing until the in-game overlay exists; rules using them are accepted
   ([rules](rules.md)).

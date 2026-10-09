@@ -30,6 +30,12 @@ public sealed class ImguiEmergencyRenderer : IOverlayRenderer
     public IReadOnlyList<Rect> Occupied => _drawer?.Box is { } box ? new[] { box } : Array.Empty<Rect>();
 
     /// <inheritdoc />
+    public Rect? TextField => null; // the emergency view has no prompts
+
+    /// <inheritdoc />
+    public bool HandlesWheel => false;
+
+    /// <inheritdoc />
     public bool TryStart(OverlayContext context, out string? reason)
     {
         _host = new GameObject("UnityRuntimeAnalysisAgent overlay (emergency)") { hideFlags = HideFlags.HideAndDontSave };

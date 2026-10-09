@@ -102,6 +102,7 @@ public static class ConfigKeys
         new ConfigKey("Overlay", "Toasts", ConfigKind.Text, "Important", "Which notifications are shown next to the overlay."),
         new ConfigKey("Overlay", "BlockUiClicks", ConfigKind.Bool, "true", "Keep clicks on the overlay from reaching the game's UI."),
         new ConfigKey("Overlay", "BlockWorldInput", ConfigKind.Bool, "false", "Keep input over the overlay from reaching the game world."),
+        new ConfigKey("Overlay", "KeyboardCapture", ConfigKind.Choice, "auto", "Keep the keyboard from the game while you type into the overlay (auto adds the Windows keyboard hook to Unity's input).", "auto", "unity", "off"),
         new ConfigKey("Overlay", "ForceCursorWhenExpanded", ConfigKind.Bool, "true", "Show and free the mouse cursor while the overlay is expanded."),
         new ConfigKey("Overlay", "InspectorStartsLocked", ConfigKind.Bool, "true", "The inspector starts locked (no edits until unlocked)."),
         new ConfigKey("Overlay", "LocalTimeControl", ConfigKind.Bool, "true", "Allow pausing and stepping the game from the overlay."),

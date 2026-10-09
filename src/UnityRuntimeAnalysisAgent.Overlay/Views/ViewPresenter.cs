@@ -205,7 +205,7 @@ public sealed class ViewPresenter
             Command = node.Command,
             Args = node.Args is null ? null : ResolveArgs(node.Args, data, item),
             Interactive = node.Command is not null || node.Type is NodeType.Toggle or NodeType.Slider or NodeType.TextField or NodeType.Dropdown,
-            Clips = style.Layout.Overflow == Overflow.Hidden,
+            Clips = style.Layout.Overflow != Overflow.Visible,
         };
         if (render.Text is { Length: > 0 } text && node.Type is NodeType.Text or NodeType.Button or NodeType.Badge or NodeType.Toggle)
         {

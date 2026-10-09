@@ -31,6 +31,7 @@ public sealed class OverlayRuntime : IDisposable
     private readonly List<(string Name, Func<IOverlayRenderer?> Create, Func<string?> Why)> _candidates;
     private readonly Action<FrameTime> _tick;
     private readonly OverlayInput _input;
+    private readonly KeyboardCapture _keyboard;
     private UguiClickBlocker? _blocker;
     private bool _noUgui;
     private IOverlayRenderer? _renderer;
@@ -51,6 +52,7 @@ public sealed class OverlayRuntime : IDisposable
         _candidates = Candidates(controller.Settings.Renderer, bundle, bundleProblem);
         _tick = _ => OnFrame();
         _input = new OverlayInput(controller, log);
+        _keyboard = new KeyboardCapture(controller.Settings.KeyboardCapture, log);
     }
 
     /// <summary>The loaded bundle family, if any.</summary>
@@ -152,6 +154,7 @@ public sealed class OverlayRuntime : IDisposable
         _renderer = null;
         _blocker?.Dispose();
         _input.Dispose();
+        _keyboard.Dispose();
         Bundle?.Dispose();
     }
 
@@ -219,6 +222,74 @@ public sealed class OverlayRuntime : IDisposable
         _log.Warning($"The overlay can't be drawn in this game: {string.Join("; ", reasons)}");
     }
 
+    // A prompt's text field takes the keyboard while it's open and focused: typed text, the caret keys, Enter, Backspace,
+    // Escape (closes the field) and Ctrl+V/C/X with the system clipboard; the game sees none of it (KeyboardCapture). A
+    // click outside the overlay pauses the field so the game gets the keyboard back.
+    private void Typing()
+    {
+        var prompts = _controller.Prompts;
+        _keyboard.Active = prompts.Editing is not null && prompts.Focused;
+        if (!_keyboard.Active)
+        {
+            if (prompts.Editing is not null)
+            {
+                ScrollField(PointerButtons.Wheel()); // a paused field scrolls too
+            }
+
+            return;
+        }
+
+        var typed = _keyboard.Take();
+        ScrollField(typed.Wheel);
+        // A mouse press anywhere but the field pauses typing: the overlay's buttons and arrow then work at once, and a
+        // press in the game gives it the keyboard back. A press in the field keeps typing.
+        if (typed.MousePressed && !(_renderer?.TextField is { } field && _input.PointerPosition is { } pointer && field.Contains(pointer)))
+        {
+            prompts.Blur();
+            return;
+        }
+
+        if (typed.Cancel)
+        {
+            prompts.CancelText();
+            return;
+        }
+
+        if (typed.Copy && prompts.SelectedText is { } selected)
+        {
+            GUIUtility.systemCopyBuffer = selected;
+        }
+
+        if (typed.Cut && prompts.Cut() is { Length: > 0 } cut)
+        {
+            GUIUtility.systemCopyBuffer = cut;
+        }
+
+        if (typed.Paste)
+        {
+            prompts.Paste(GUIUtility.systemCopyBuffer);
+        }
+
+        prompts.Type(typed.Text);
+    }
+
+    // The mouse wheel over the prompt's text field scrolls its lines (three per notch), leaving the caret where it is
+    // (renderers that see wheel events themselves decide there instead). Each gesture belongs to what was under the
+    // pointer when it started (PromptRegistry.ClaimWheel).
+    private void ScrollField(float wheel)
+    {
+        if (wheel == 0 || _renderer is null || _renderer.HandlesWheel)
+        {
+            return;
+        }
+
+        var over = _renderer.TextField is { } field && _input.PointerPosition is { } pointer && field.Contains(pointer);
+        if (_controller.Prompts.ClaimWheel(over, Time.realtimeSinceStartup))
+        {
+            _controller.Prompts.ScrollLines(wheel > 0 ? -3 : 3);
+        }
+    }
+
     private void OnFrame()
     {
         try
@@ -250,10 +321,8 @@ public sealed class OverlayRuntime : IDisposable
             }
 
             Cursor();
-            if (_controller.Prompts.Editing is not null)
-            {
-                _controller.Prompts.Type(_input.TypedText());
-            }
+            Typing();
+            _controller.Prompts.Animate(Time.unscaledDeltaTime);
 
             _renderer?.Update();
             var occupied = _renderer?.Occupied ?? Array.Empty<Rect>();
