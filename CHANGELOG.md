@@ -267,3 +267,6 @@
   rebuilt, so live tabs (Status, Activity) no longer reset what's under the pointer every second; lists keep their
   scroll position. The arrow's colour follows client activity without redrawing the panel. The panel is still rebuilt
   when what it shows changes shape (a tab switch, an element shown or hidden).
+- UI Toolkit overlay fixes: only list rows and controls highlight on hover (a heading in a row with buttons did, other
+  headings didn't); the Status tab's frame-rate sparkline draws its bars (it stacked them into one block, which showed
+  as an empty box); plugin rows in Mods & Tests stay on one line (a long one was cut off mid-line).

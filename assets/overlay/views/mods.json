@@ -10,7 +10,7 @@
         "items": "mods.items",
         "visible": "mods.items",
         "style": { "height": "200px" },
-        "template": { "type": "text", "class": "value", "text": "{@.name} {@.version} · {@.source} · {@.guid}" }
+        "template": { "type": "text", "class": "value", "text": "{@.name} {@.version} · {@.source} · {@.guid}", "style": { "white-space": "nowrap", "text-overflow": "ellipsis" } }
       },
       { "type": "separator" },
       { "type": "text", "class": "heading", "text": "Last test run" },

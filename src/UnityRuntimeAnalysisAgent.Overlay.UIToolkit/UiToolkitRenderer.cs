@@ -1170,7 +1170,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
                 element.Add(fill);
                 break;
             case NodeType.Sparkline:
-                element = Sparkline(value);
+                element = Sparkline(value, _context!.Theme.Resolve(node, state).Color);
                 break;
             case NodeType.Image:
                 element = new VisualElement();
@@ -1235,6 +1235,13 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             element[0].style.backgroundColor = Rgba(_context!.Theme.Resolve(node, state).Color);
         }
 
+        if (node.Type == NodeType.Sparkline)
+        {
+            // Its bars stand side by side from its bottom (the theme's layout, applied above, made it a column).
+            element.style.flexDirection = FlexDirection.Row;
+            element.style.alignItems = Align.FlexEnd;
+        }
+
         if (node.Command is not null && node.Type is not (NodeType.Button or NodeType.Toggle or NodeType.Slider or NodeType.Dropdown or NodeType.TextField))
         {
             element.RegisterCallback<ClickEvent>(_ => Run(node, data, item));
@@ -1262,7 +1269,9 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             element.RegisterCallback<PointerDownEvent>(_ => _tooltip.Clear(), TrickleDown.TrickleDown);
         }
 
-        if (node.Command is not null || node.Type is NodeType.Toggle or NodeType.TextField or NodeType.Dropdown or NodeType.Slider || HasHover(node, state))
+        // A look of its own on hover: controls, and rows of lists (item is set) whose theme gives them one (row:hover). A
+        // layout row outside a list (a heading with its buttons) stays as it is, like the headings around it.
+        if (node.Command is not null || node.Type is NodeType.Toggle or NodeType.TextField or NodeType.Dropdown or NodeType.Slider || (item is not null && HasHover(node, state)))
         {
             States(element, node, state);
         }
@@ -1401,11 +1410,10 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
                     _updates.Add(d =>
                     {
                         // Its bars are redrawn inside it (the element itself stays).
-                        var fresh = Sparkline(Bindings.Value(bind, d, null));
+                        var fresh = Sparkline(Bindings.Value(bind, d, null), color);
                         element.Clear();
                         foreach (var bar in fresh.Children().ToList())
                         {
-                            bar.style.backgroundColor = Rgba(color);
                             element.Add(bar);
                         }
 
@@ -1663,18 +1671,25 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         return container;
     }
 
-    private VisualElement Sparkline(JsonValue? value)
+    // Bars between the lowest and the highest value shown (from zero, values that barely change, such as a frame rate,
+    // all drew at full height: a solid box), in the node's colour.
+    private static VisualElement Sparkline(JsonValue? value, uint color)
     {
         var line = new VisualElement();
         line.style.flexDirection = FlexDirection.Row;
         line.style.alignItems = Align.FlexEnd;
         var values = value is JsonArray array ? array.OfType<JsonNumber>().Select(n => n.GetDouble()).ToList() : new List<double>();
-        var max = values.Count == 0 ? 1 : Math.Max(1e-9, values.Max());
-        foreach (var v in values.Skip(Math.Max(0, values.Count - 60)))
+        var shown = values.Skip(Math.Max(0, values.Count - 60)).ToList();
+        var low = shown.Count == 0 ? 0 : shown.Min();
+        var high = shown.Count == 0 ? 1 : shown.Max();
+        foreach (var v in shown)
         {
             var bar = new VisualElement { pickingMode = PickingMode.Ignore };
             bar.style.flexGrow = 1;
-            bar.style.height = new Length((float)(Math.Max(0, v) / max * 100), LengthUnit.Percent);
+            bar.style.marginRight = 1;
+            var fraction = high - low < 1e-9 ? 0.5 : 0.1 + (0.9 * (v - low) / (high - low));
+            bar.style.height = new Length((float)(fraction * 100), LengthUnit.Percent);
+            bar.style.backgroundColor = Rgba(color);
             line.Add(bar);
         }
 
