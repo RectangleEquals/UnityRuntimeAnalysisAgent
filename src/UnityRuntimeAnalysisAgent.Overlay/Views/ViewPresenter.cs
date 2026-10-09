@@ -90,7 +90,7 @@ public sealed class RenderNode
 /// The presentation pipeline the styled uGUI renderer uses: a view, its data, the theme and the interaction state become a
 /// laid-out tree of render nodes (our flex engine, text measured by the renderer). Lists, trees and tables keep their own
 /// scroll offset and build only the rows in view (fixed row height, from the first row); every row is
-/// <c>flex-shrink: 0</c> and scroll viewports clip, so nothing squashes or spills (D-012). Renderer-independent and
+/// <c>flex-shrink: 0</c> and scroll viewports clip, so nothing squashes or spills. Renderer-independent and
 /// unit-tested; the renderer only draws the result and reports pointer and keyboard input back.
 /// </summary>
 public sealed class ViewPresenter
@@ -116,6 +116,8 @@ public sealed class ViewPresenter
 
     /// <summary>Creates the presenter.</summary>
     private IReadOnlyDictionary<string, double> _groups = new Dictionary<string, double>();
+    private readonly Dictionary<string, int> _rowTargets = new(StringComparer.Ordinal); // ScrollToRow requests
+    private const int SampledRows = 24; // rows measured for a list's row height
 
     public ViewPresenter(Theme theme, ITextMeasurer measurer)
     {
@@ -140,6 +142,9 @@ public sealed class ViewPresenter
 
     /// <summary>Scrolls a node by a delta (clamped on the next layout).</summary>
     public void ScrollBy(string path, double delta) => _scroll[path] = Math.Max(0, ScrollOf(path) + delta);
+
+    /// <summary>Scrolls a list so a row is at its top (as far as the list scrolls), at the next <see cref="Present"/>.</summary>
+    public void ScrollToRow(string listPath, int index) => _rowTargets[listPath] = Math.Max(0, index);
 
     /// <summary>Selects a tab of a tabs node.</summary>
     public void SelectTab(string path, int index) => _tabs[path] = Math.Max(0, index);
@@ -173,7 +178,7 @@ public sealed class ViewPresenter
             {
                 if (_assumed.TryGetValue(node.Path, out var assumed))
                 {
-                    _viewports[node.Path] = node.Layout.Height;
+                    _viewports[node.Path] = Inner(node); // the rows' room: inside its padding and border
                     changed |= Math.Abs(node.Layout.Height - assumed) > 0.5;
                 }
 
@@ -190,6 +195,8 @@ public sealed class ViewPresenter
                 break;
             }
         }
+
+        _rowTargets.Clear(); // ScrollToRow requests are done
 
         Clamp(root);
         Place(root, 0, 0);
@@ -296,16 +303,29 @@ public sealed class ViewPresenter
             return;
         }
 
-        var rowHeight = RowHeight(node.Template, data, rows[0].Item);
+        // Rows share one height: the tallest of the first ones (a list may mix kinds of rows, such as section headings).
+        var rowHeight = rows.Take(SampledRows).Max(r => RowHeight(node.Template, data, r.Item));
         var viewport = Viewport(path, list.Style.Layout.Height);
+        if (_rowTargets.TryGetValue(path, out var target))
+        {
+            _scroll[path] = target * rowHeight; // (kept until the last layout pass, which knows the list's real size)
+        }
+
+        _scroll[path] = Math.Max(0, Math.Min(ScrollOf(path), (rows.Count * rowHeight) - viewport)); // never past the last row
+
         var first = (int)Math.Floor(ScrollOf(path) / rowHeight);
         var count = (int)Math.Ceiling(viewport / rowHeight) + 1;
-        Spacer(list, first * rowHeight);
         for (var i = Math.Max(0, first); i < Math.Min(rows.Count, first + count); i++)
         {
             var (rowItem, depth, rowPath) = rows[i];
             var row = Build(node.Template, rowPath, data, rowItem);
-            row.Layout.Style.FlexShrink = 0; // rows keep their height (D-012)
+            row.Layout.Style.FlexShrink = 0; // rows keep their height
+            row.Layout.Style.Height = Length.Px(rowHeight); // and all have the same one, so the scroll maps to rows
+            if (i == first)
+            {
+                // Only the rows in view are built: the first sits at the top, raised by the part of it scrolled away.
+                row.Layout.Style.Margin.Top = Length.Px((first * rowHeight) - ScrollOf(path));
+            }
             if (depth > 0)
             {
                 row.Layout.Style.Padding.Left = Length.Px(depth * 12);
@@ -334,6 +354,13 @@ public sealed class ViewPresenter
         _assumedWidths[path] = width;
         var heights = rows.Select(r => RowHeight(node.Template!, data, r.Item, Math.Max(1, width - r.Depth * 12))).ToList();
         var viewport = Viewport(path, list.Style.Layout.Height);
+        if (_rowTargets.TryGetValue(path, out var target))
+        {
+            _scroll[path] = heights.Take(target).Sum(); // (kept until the last layout pass, which knows the list's real size)
+        }
+
+        _scroll[path] = Math.Max(0, Math.Min(ScrollOf(path), heights.Sum() - viewport)); // never past the last row
+
         var scroll = ScrollOf(path);
         double top = 0;
         double above = 0;
@@ -351,20 +378,16 @@ public sealed class ViewPresenter
             }
             else
             {
-                if (list.Children.Count == 0)
-                {
-                    Spacer(list, above);
-                }
-
+                var firstInView = list.Children.Count == 0;
                 AddRow(list, node, data, rows[i]);
+                if (firstInView)
+                {
+                    // Only the rows in view are built: the first sits at the top, raised by the part of it scrolled away.
+                    list.Children[0].Layout.Style.Margin.Top = Length.Px(above - scroll);
+                }
             }
 
             top += height;
-        }
-
-        if (list.Children.Count == 0)
-        {
-            Spacer(list, above);
         }
 
         Spacer(list, below);
@@ -375,7 +398,7 @@ public sealed class ViewPresenter
     {
         var (rowItem, depth, rowPath) = entry;
         var row = Build(node.Template!, rowPath, data, rowItem);
-        row.Layout.Style.FlexShrink = 0; // rows keep their height (D-012)
+        row.Layout.Style.FlexShrink = 0; // rows keep their height
         if (depth > 0)
         {
             row.Layout.Style.Padding.Left = Length.Px(depth * 12);
@@ -547,12 +570,20 @@ public sealed class ViewPresenter
         parent.Layout.Children.Add(spacer);
     }
 
+    // A node's height inside its padding and border.
+    private static double Inner(RenderNode node)
+    {
+        var style = node.Layout.Style;
+        double Px(Length length) => length.Resolve(node.Layout.Width) is var px && !double.IsNaN(px) ? px : 0;
+        return Math.Max(0, node.Layout.Height - Px(style.Padding.Top) - Px(style.Padding.Bottom) - Px(style.Border.Top) - Px(style.Border.Bottom));
+    }
+
     // Scroll offsets can't go past the content.
     private void Clamp(RenderNode node)
     {
         if (node.Clips && node.Value is JsonNumber content && _scroll.ContainsKey(node.Path))
         {
-            _scroll[node.Path] = Math.Max(0, Math.Min(ScrollOf(node.Path), content.GetDouble() - node.Layout.Height));
+            _scroll[node.Path] = Math.Max(0, Math.Min(ScrollOf(node.Path), content.GetDouble() - Inner(node)));
         }
 
         foreach (var child in node.Children)

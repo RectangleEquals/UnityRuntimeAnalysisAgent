@@ -9,6 +9,7 @@ using UnityRuntimeAnalysisAgent.Core.Hosting;
 using UnityRuntimeAnalysisAgent.Core.Overlay;
 using UnityRuntimeAnalysisAgent.Overlay.Assets;
 using UnityRuntimeAnalysisAgent.Overlay.Ugui;
+using UnityRuntimeAnalysisAgent.Overlay.Views;
 
 namespace UnityRuntimeAnalysisAgent.Overlay.Runtime;
 
@@ -204,6 +205,7 @@ public sealed class OverlayRuntime : IDisposable
                     _rendererReasons = reasons;
                     var reason = reasons.Count == 0 ? (_controller.Settings.Renderer == "auto" ? "The first renderer that works here." : "Chosen in Overlay.Renderer.") : string.Join("; ", reasons);
                     _controller.SetRenderer(name, reason);
+                    _controller.Automation = new OverlayAutomation(renderer, _controller); // clients can drive what it draws
                     _log.Info($"Overlay drawn with {name}{(reasons.Count == 0 ? "" : $" ({reason})")}.");
                     return;
                 }
@@ -218,6 +220,7 @@ public sealed class OverlayRuntime : IDisposable
             }
         }
 
+        _controller.Automation = null;
         _controller.SetRenderer("none", string.Join("; ", reasons));
         _log.Warning($"The overlay can't be drawn in this game: {string.Join("; ", reasons)}");
     }
@@ -333,6 +336,7 @@ public sealed class OverlayRuntime : IDisposable
                 if (_restarts > 20 || !_renderer.TryStart(_context, out _))
                 {
                     _log.Warning("The overlay's objects keep being destroyed; the overlay stops.");
+                    _controller.Automation = null;
                     _controller.SetRenderer("none", "The game keeps destroying the overlay's objects.");
                     _renderer = null;
                     return;
@@ -350,6 +354,7 @@ public sealed class OverlayRuntime : IDisposable
         catch (Exception e)
         {
             _log.Error("The overlay failed during a frame; it stops (the agent keeps running).", e);
+            _controller.Automation = null;
             _controller.SetRenderer("none", $"The overlay stopped after an error: {e.Message}");
             _renderer?.Stop();
             _renderer = null;

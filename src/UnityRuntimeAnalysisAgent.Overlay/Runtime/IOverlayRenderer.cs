@@ -47,7 +47,7 @@ public sealed class OverlayContext
 /// One way of drawing the overlay: UI Toolkit, styled uGUI, or the IMGUI emergency view. The runtime tries them in order
 /// and keeps the first that starts; a renderer whose objects the game destroyed is started again.
 /// </summary>
-public interface IOverlayRenderer
+public interface IOverlayRenderer : IOverlayAutomationSurface
 {
     /// <summary>Its protocol name: <c>uitoolkit</c>, <c>ugui</c> or <c>imgui</c>.</summary>
     string Name { get; }

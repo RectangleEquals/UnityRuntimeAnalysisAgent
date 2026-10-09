@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityRuntimeAnalysisAgent.Core.Overlay;
+using UnityRuntimeAnalysisAgent.Overlay.Views;
 
 namespace UnityRuntimeAnalysisAgent.Overlay.Runtime;
 
@@ -31,6 +32,25 @@ public sealed class ImguiEmergencyRenderer : IOverlayRenderer
 
     /// <inheritdoc />
     public IReadOnlyList<(Rect Rect, TextBox Box)> TextFields => Array.Empty<(Rect, TextBox)>(); // the emergency view has no text boxes
+
+    /// <inheritdoc />
+    public IReadOnlyList<ElementSource> Sources => Array.Empty<ElementSource>(); // nothing to drive: it only has E-STOP
+
+    /// <inheritdoc />
+    public ElementPlace Locate(string path, string? listPath, int rowIndex) => new(null, "hidden");
+
+    /// <inheritdoc />
+    public bool ScrollIntoView(string path, string? listPath, int rowIndex) => false;
+
+    /// <inheritdoc />
+    public void Outline(string path, double seconds)
+    {
+    }
+
+    /// <inheritdoc />
+    public void Run(string command, UnityLudometry.Protocol.Json.JsonObject args)
+    {
+    }
 
     /// <inheritdoc />
     public bool HandlesWheel => false;

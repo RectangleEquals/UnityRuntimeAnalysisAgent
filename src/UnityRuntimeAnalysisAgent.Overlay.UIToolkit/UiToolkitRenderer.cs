@@ -23,7 +23,7 @@ namespace UnityRuntimeAnalysisAgent.Overlay.UIToolkit;
 /// The UI Toolkit renderer: a panel (PanelSettings made in code with the bundle's theme, sorted above the game's panels
 /// and canvases) whose views are real VisualElements laid out by UI Toolkit, with its built-in controls (Button, Toggle,
 /// Slider, DropdownField, TextField, ListView). Every visual property comes from our theme as inline style (fonts, text
-/// colours and alignment, backgrounds, borders); rows never shrink and scroll views clip (D-012). Theme states (hover,
+/// colours and alignment, backgrounds, borders); rows never shrink and scroll views clip. Theme states (hover,
 /// focus, press) follow pointer and focus events. A probe checks in the first frames that the theme really applies
 /// (UI Toolkit doesn't report a theme it can't read); if not, <see cref="Failure"/> hands over to the uGUI renderer.
 /// </summary>
@@ -37,6 +37,14 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
     private readonly List<Rect> _occupied = new();
     private readonly List<(VisualElement Bar, double Since)> _carets = new();
     private readonly TooltipTimer _tooltip = new();
+    private readonly List<ElementSource> _sources = new(); // what the last rebuild drew, for clients that drive the overlay
+    private readonly Dictionary<string, VisualElement> _elements = new(StringComparer.Ordinal); // by path, as built
+    private ViewNode? _shellHeader;
+    private ViewNode? _shellBody;
+    private ViewNode? _cardsNode;
+    private VisualElement? _outline;
+    private string? _outlinePath;
+    private double _outlineUntil;
     private IReadOnlyDictionary<string, double> _groups = new Dictionary<string, double>(); // SizeGroups of the panel being built
     private readonly Dictionary<string, Label> _groupMeasures = new(StringComparer.Ordinal); // GroupTextWidth's labels, by font and size
     private readonly HashSet<Label> _measuresReady = new(); // those that have their font
@@ -226,6 +234,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         {
             bar.style.opacity = CaretLayout.Opacity(_context.Now() - since); // fades without a rebuild
         }
+
+        PlaceOutline(root);
 
         Tooltip(root);
         var settings = controller.Settings;
@@ -811,6 +821,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         Rebuilds++;
         SaveScroll(_layer!);
         _layer!.Clear();
+        _sources.Clear();
+        _elements.Clear();
         _carets.Clear();
         _tooltip.Clear(); // its node is gone
         _fieldViews.Clear();
@@ -822,7 +834,10 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
         var arrowSize = Number(_context!.Theme.Token("$size.arrow", "renderer"), 48);
         var arrow = EdgeDock.Arrow(model.Edge, model.Offset, arrowSize, width, height);
-        _layer.Add(Arrow(controller, arrow));
+        var arrowElement = Arrow(controller, arrow);
+        _layer.Add(arrowElement);
+        _elements["arrow"] = arrowElement;
+        _sources.Add(new ElementSource("arrow", "arrow", ArrowNode, "arrow", null));
         if (OverlayArrow.Badge(controller) is { } badgeNode)
         {
             // Placed once UI Toolkit has measured it.
@@ -847,11 +862,15 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             var panel = Shell(controller);
             Place(panel, rect.X, rect.Y, rect.Width, rect.Height);
             _layer.Add(panel);
+            var data = controller.Views.Data(controller.Model.Tab);
+            _sources.Add(new ElementSource("header", "header", _shellHeader!, "shell/header", data));
+            _sources.Add(new ElementSource("panel", "panel/" + controller.Model.Tab, _shellBody!, "shell/content/" + (_shellBody!.Id ?? "0"), data));
         }
 
         var cards = Cards(controller);
         if (cards is not null)
         {
+            _sources.Add(new ElementSource("cards", "cards", _cardsNode!, "cards", null));
             var x = model.Edge == OverlayEdge.Right ? arrow.X - 368 : model.Edge == OverlayEdge.Left ? arrow.X + arrow.Width + 8 : Math.Max(0, Math.Min(arrow.X, width - 360));
             cards.style.position = UnityEngine.UIElements.Position.Absolute;
             cards.style.left = (float)x;
@@ -948,6 +967,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         content.Style["overflow"] = "hidden";
         content.Style["margin-top"] = "$space.3";
         content.Children.Add(body);
+        _shellHeader = header;
+        _shellBody = body;
         var panel = new ViewNode { Type = NodeType.Panel, Id = "panel" };
         panel.Children.Add(header);
         panel.Children.Add(content);
@@ -986,6 +1007,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             stack.Children.Add(node);
         }
 
+        _cardsNode = stack;
         return Build(stack, "cards", null, null, null);
     }
 
@@ -1153,6 +1175,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             States(element, node, state);
         }
 
+        _elements[path] = element; // for clients that drive the overlay (OverlayAutomation)
         if (node.Type is not (NodeType.List or NodeType.Tree or NodeType.Table or NodeType.Tabs))
         {
             var index = 0;
@@ -1386,6 +1409,140 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         element.RegisterCallback<FocusOutEvent>(_ => { focus = false; Refresh(); });
     }
 
+    // ---- driving the overlay (OverlayAutomation) ------------------------------------------------------------------------
+
+    // The arrow as an element: a click expands or collapses the panel.
+    private static readonly ViewNode ArrowNode = new() { Type = NodeType.Button, Id = "arrow", Command = "overlay.toggle" };
+
+    /// <inheritdoc />
+    public IReadOnlyList<ElementSource> Sources => _sources;
+
+    /// <inheritdoc />
+    public ElementPlace Locate(string path, string? listPath, int rowIndex)
+    {
+        if (_settings == null)
+        {
+            return new ElementPlace(null, "hidden");
+        }
+
+        if (_elements.TryGetValue(path, out var element) && element.panel is not null && element.resolvedStyle.display != DisplayStyle.None
+            && element.resolvedStyle.visibility != Visibility.Hidden && !float.IsNaN(element.worldBound.width))
+        {
+            var bounds = element.worldBound;
+            var shown = bounds;
+            for (var parent = element.parent; parent is not null; parent = parent.parent)
+            {
+                if (parent is ScrollView view)
+                {
+                    shown = Intersect(shown, view.contentViewport.worldBound); // scrolled out of its list or scroll view
+                }
+            }
+
+            var scale = _settings.scale;
+            var screen = new Rect(0, 0, Screen.width / scale, Screen.height / scale);
+            var onScreen = Intersect(shown, screen);
+            var visibility = shown.width < 0.5f || shown.height < 0.5f ? "clipped"
+                : onScreen.width < 0.5f || onScreen.height < 0.5f ? "offscreen"
+                : Math.Abs(onScreen.width - bounds.width) < 0.5f && Math.Abs(onScreen.height - bounds.height) < 0.5f ? "visible"
+                : "partial";
+            return new ElementPlace((bounds.x * scale, bounds.y * scale, bounds.width * scale, bounds.height * scale), visibility);
+        }
+
+        // A list row that isn't built (scrolled away: lists build only the rows in view).
+        return listPath is not null && _elements.TryGetValue(listPath, out var list) && list.panel is not null
+            ? new ElementPlace(null, "clipped")
+            : new ElementPlace(null, "hidden");
+    }
+
+    /// <inheritdoc />
+    public bool ScrollIntoView(string path, string? listPath, int rowIndex)
+    {
+        if (_elements.TryGetValue(path, out var element) && element.panel is not null)
+        {
+            for (var parent = element.parent; parent is not null; parent = parent.parent)
+            {
+                if (parent is ScrollView view)
+                {
+                    if (view == _tabScroller)
+                    {
+                        _tabTarget = null; // the tab's eased wheel scrolling would pull it back
+                    }
+
+                    view.ScrollTo(element);
+                }
+            }
+
+            return true;
+        }
+
+        if (listPath is not null && _elements.TryGetValue(listPath, out var list) && list is ListView rows && list.panel is not null)
+        {
+            rows.ScrollToItem(rowIndex); // the row is built once it's in view
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    public void Outline(string path, double seconds)
+    {
+        _outlinePath = path;
+        _outlineUntil = (_context?.Now() ?? 0) + seconds;
+    }
+
+    /// <inheritdoc />
+    public void Run(string command, JsonObject args)
+    {
+        _commands?.Run(command, args);
+        _dirty = true;
+    }
+
+    // The outline around the element OverlayAutomation reveals: follows it every frame until its time is up.
+    private void PlaceOutline(VisualElement root)
+    {
+        var target = _outlinePath is { } path && _context!.Now() < _outlineUntil && _elements.TryGetValue(path, out var element) && element.panel is not null ? element : null;
+        if (target is null)
+        {
+            if (_outlinePath is not null && _context!.Now() >= _outlineUntil)
+            {
+                _outlinePath = null;
+            }
+
+            if (_outline is not null)
+            {
+                _outline.style.display = DisplayStyle.None;
+            }
+
+            return;
+        }
+
+        if (_outline is null)
+        {
+            _outline = new VisualElement { name = "ov-outline", pickingMode = PickingMode.Ignore };
+            _outline.style.position = UnityEngine.UIElements.Position.Absolute;
+            _outline.style.borderTopWidth = _outline.style.borderBottomWidth = _outline.style.borderLeftWidth = _outline.style.borderRightWidth = 2;
+            root.Add(_outline);
+        }
+
+        var accent = Color("$color.accent");
+        _outline.style.borderTopColor = _outline.style.borderBottomColor = _outline.style.borderLeftColor = _outline.style.borderRightColor = accent;
+        var bounds = target.worldBound;
+        _outline.style.display = DisplayStyle.Flex;
+        _outline.style.left = bounds.x - 3;
+        _outline.style.top = bounds.y - 3;
+        _outline.style.width = bounds.width + 6;
+        _outline.style.height = bounds.height + 6;
+        _outline.BringToFront();
+    }
+
+    private static Rect Intersect(Rect a, Rect b)
+    {
+        var x = Math.Max(a.xMin, b.xMin);
+        var y = Math.Max(a.yMin, b.yMin);
+        return new Rect(x, y, Math.Max(0, Math.Min(a.xMax, b.xMax) - x), Math.Max(0, Math.Min(a.yMax, b.yMax) - y));
+    }
+
     // Whether an element's text is wider than the room it has (an ellipsis cuts it off).
     private static bool Truncated(VisualElement element, string text)
     {
@@ -1523,7 +1680,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         s.textOverflow = resolved.Ellipsis ? TextOverflow.Ellipsis : TextOverflow.Clip;
     }
 
-    // Runtime SDF font assets from the bundle's fonts (D-011), made once per font.
+    // Runtime SDF font assets from the bundle's fonts, made once per font.
     private FontAsset? Font(string name)
     {
         if (_fonts.TryGetValue(name, out var asset))

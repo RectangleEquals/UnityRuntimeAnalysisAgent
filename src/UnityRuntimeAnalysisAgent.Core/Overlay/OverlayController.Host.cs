@@ -20,6 +20,7 @@ public sealed partial class OverlayController
     private readonly IConfigWriter? _writer;
     private readonly ModeController _modes;
     private readonly Dictionary<string, string> _settingValues = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _sessionValues = new(StringComparer.Ordinal); // overlay.setSettings without persist
     private bool _settingPromptsWired;
 
     /// <summary>The connected clients (set by the host).</summary>
@@ -92,25 +93,13 @@ public sealed partial class OverlayController
     public bool SetSetting(string fullKey, string value)
     {
         var key = Find(fullKey);
-        if (key is null || (key.Choices.Count > 0 && !key.Choices.Contains(value)))
-        {
-            return false;
-        }
-
-        switch (key.Kind)
-        {
-            case ConfigKind.Bool when !bool.TryParse(value, out _):
-            case ConfigKind.Int when !int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _):
-            case ConfigKind.Float when !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _):
-                return false;
-        }
-
-        if (key is { Min: { } min, Max: { } max } && (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) || number < min - 1e-9 || number > max + 1e-9))
+        if (key is null || Invalid(key, value) is not null)
         {
             return false;
         }
 
         _settingValues[fullKey] = value;
+        _sessionValues.Remove(fullKey); // the saved value is in effect again
         _writer?.Set(fullKey, value);
         if (ApplyNow(fullKey, value))
         {
@@ -119,6 +108,93 @@ public sealed partial class OverlayController
 
         Toasts.Add($"{key.Name} = {(value.Length > 0 ? value : "(none)")}. Saved; it applies after the game restarts.", ToastLevel.Info, "agent", _lastNow, 4);
         return true;
+    }
+
+    /// <summary>The overlay settings that take effect at once when changed (the others after the game restarts).</summary>
+    public static readonly IReadOnlyCollection<string> LiveSettings = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "Overlay.WheelLatch", "Overlay.DragScrollStartSpeed", "Overlay.DragScrollTopSpeed", "Overlay.DragScrollRampDistance",
+    };
+
+    /// <summary>
+    /// Changes overlay settings (<c>overlay.setSettings</c>): for this session only (live settings only: nothing is saved),
+    /// or saved like the Settings tab does with <paramref name="persist"/>.
+    /// </summary>
+    public (List<string> Applied, List<string> Saved, List<string> RestartRequired, List<(string Key, string Reason)> Rejected) ChangeSettings(IEnumerable<KeyValuePair<string, string>> values, bool persist)
+    {
+        var applied = new List<string>();
+        var saved = new List<string>();
+        var restart = new List<string>();
+        var rejected = new List<(string, string)>();
+        foreach (var pair in values)
+        {
+            var (fullKey, value) = (pair.Key, pair.Value);
+            var key = Find(fullKey);
+            if (key is null || key.Section != "Overlay")
+            {
+                rejected.Add((fullKey, "Not an overlay setting."));
+                continue;
+            }
+
+            if (Invalid(key, value) is { } reason)
+            {
+                rejected.Add((fullKey, reason));
+                continue;
+            }
+
+            var live = LiveSettings.Contains(fullKey);
+            if (!persist)
+            {
+                if (!live)
+                {
+                    rejected.Add((fullKey, "Takes effect only after the game restarts: pass persist, or write it to the configuration file before the game starts."));
+                    continue;
+                }
+
+                _sessionValues[fullKey] = value;
+                ApplyNow(fullKey, value);
+                applied.Add(fullKey);
+                continue;
+            }
+
+            SetSetting(fullKey, value);
+            saved.Add(fullKey);
+            (live ? applied : restart).Add(fullKey);
+        }
+
+        return (applied, saved, restart, rejected);
+    }
+
+    /// <summary>The overlay settings with what <c>overlay.settings</c> reports: value in effect, saved value, range, live or not.</summary>
+    public IReadOnlyList<(ConfigKey Key, string Value, string Saved, bool AppliesNow)> SettingStates() =>
+        ConfigKeys.All.Where(k => k.Section == "Overlay")
+            .Select(k => (k, SettingValue(k), SavedValue(k), LiveSettings.Contains(k.Section + "." + k.Name)))
+            .ToList();
+
+    // Why a value doesn't fit a setting, or null when it does.
+    private static string? Invalid(ConfigKey key, string value)
+    {
+        if (key.Choices.Count > 0 && !key.Choices.Contains(value))
+        {
+            return $"Not one of: {string.Join(", ", key.Choices.ToArray())}.";
+        }
+
+        switch (key.Kind)
+        {
+            case ConfigKind.Bool when !bool.TryParse(value, out _):
+                return "Not true or false.";
+            case ConfigKind.Int when !int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _):
+                return "Not a whole number.";
+            case ConfigKind.Float when !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _):
+                return "Not a number.";
+        }
+
+        if (key is { Min: { } min, Max: { } max } && (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) || number < min - 1e-9 || number > max + 1e-9))
+        {
+            return $"Outside {min.ToString(CultureInfo.InvariantCulture)} to {max.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        return null;
     }
 
     // The settings that apply at once: whether this one did.
@@ -312,7 +388,12 @@ public sealed partial class OverlayController
 
     private static JsonValue? Get(Dictionary<string, JsonValue?> r, string key) => r.TryGetValue(key, out var v) ? v : null;
 
-    private string SettingValue(ConfigKey key)
+    // The value in effect: a session override (overlay.setSettings without persist), else the saved one.
+    private string SettingValue(ConfigKey key) =>
+        _sessionValues.TryGetValue(key.Section + "." + key.Name, out var session) ? session : SavedValue(key);
+
+    // The value in the configuration file (or the default).
+    private string SavedValue(ConfigKey key)
     {
         var full = key.Section + "." + key.Name;
         return _settingValues.TryGetValue(full, out var saved) ? saved : Config?.Get(full) ?? key.Default;

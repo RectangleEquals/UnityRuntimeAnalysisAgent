@@ -197,7 +197,7 @@ public sealed class AgentHost : IDisposable
         if (overlaySettings.Enabled)
         {
             Overlay = CreateOverlay(overlaySettings, control);
-            Dispatcher.Register(new OverlayService(Overlay));
+            Dispatcher.Register(new OverlayService(Overlay, Data, Pump));
         }
     }
 

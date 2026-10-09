@@ -13,45 +13,49 @@
           "type": "stack",
           "style": { "flex-direction": "column" },
           "children": [
-            { "type": "text", "class": "section", "text": "{@.group}", "visible": "@.heading" },
+            { "type": "text", "id": "heading", "class": "section", "text": "{@.group}", "visible": "@.heading" },
             {
               "type": "stack",
+              "id": "row",
               "class": "row",
               "visible": "!@.heading",
               "children": [
-                { "type": "text", "class": "label", "text": "{@.name}", "tooltip": "{@.help}", "style": { "width": "34%", "flex-shrink": "0", "white-space": "nowrap", "text-overflow": "ellipsis" } },
-                { "type": "text", "class": "value", "text": "{@.value}", "visible": "!@.slider", "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "14%", "white-space": "nowrap", "text-overflow": "ellipsis" } },
+                { "type": "text", "id": "name", "class": "label", "text": "{@.name}", "tooltip": "{@.help}", "style": { "width": "34%", "flex-shrink": "0", "white-space": "nowrap", "text-overflow": "ellipsis" } },
+                { "type": "text", "id": "value", "class": "value", "text": "{@.value}", "visible": "!@.slider", "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "14%", "white-space": "nowrap", "text-overflow": "ellipsis" } },
                 {
                   "type": "stack",
+                  "id": "slider",
                   "visible": "@.slider",
                   "style": { "flex-direction": "row", "align-items": "center", "flex-grow": "1", "flex-shrink": "1", "min-width": "0" },
                   "children": [
-                    { "type": "text", "class": "value", "text": "{@.value}", "style": { "min-width": "40px", "flex-shrink": "0", "white-space": "nowrap" } },
-                    { "type": "slider", "bind": "@.fraction", "command": "setting.slide", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "32px", "margin": "0 $space.2" } }
+                    { "type": "text", "id": "slider-value", "class": "value", "text": "{@.value}", "style": { "min-width": "40px", "flex-shrink": "0", "white-space": "nowrap" } },
+                    { "type": "slider", "id": "control", "bind": "@.fraction", "command": "setting.slide", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "32px", "margin": "0 $space.2" } }
                   ]
                 },
                 {
                   "type": "stack",
+                  "id": "actions",
                   "sizeGroup": "actions",
                   "style": { "flex-direction": "row", "flex-shrink": "0", "max-width": "30%" },
                   "children": [
-                    { "type": "button", "text": "Toggle", "visible": "@.kind==bool", "command": "setting.toggle", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
-                    { "type": "button", "text": "Next", "visible": "@.kind==choice", "command": "setting.cycle", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
-                    { "type": "button", "text": "−", "visible": "@.kind==int", "command": "setting.step", "args": { "key": "{@.key}", "delta": -1 }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
-                    { "type": "button", "text": "+", "visible": "@.kind==int", "command": "setting.step", "args": { "key": "{@.key}", "delta": 1 }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
-                    { "type": "button", "text": "−", "visible": "@.kind==float", "command": "setting.step", "args": { "key": "{@.key}", "delta": -1 }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
-                    { "type": "button", "text": "+", "visible": "@.kind==float", "command": "setting.step", "args": { "key": "{@.key}", "delta": 1 }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
-                    { "type": "button", "text": "Edit…", "visible": "@.kind==text", "command": "setting.edit", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
-                    { "type": "button", "text": "Edit…", "visible": "@.kind==shortcut", "command": "setting.edit", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } }
+                    { "type": "button", "id": "toggle", "text": "Toggle", "visible": "@.kind==bool", "command": "setting.toggle", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
+                    { "type": "button", "id": "next", "text": "Next", "visible": "@.kind==choice", "command": "setting.cycle", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
+                    { "type": "button", "id": "minus", "text": "−", "visible": "@.kind==int", "command": "setting.step", "args": { "key": "{@.key}", "delta": -1 }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
+                    { "type": "button", "id": "plus", "text": "+", "visible": "@.kind==int", "command": "setting.step", "args": { "key": "{@.key}", "delta": 1 }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
+                    { "type": "button", "id": "minus-step", "text": "−", "visible": "@.kind==float", "command": "setting.step", "args": { "key": "{@.key}", "delta": -1 }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
+                    { "type": "button", "id": "plus-step", "text": "+", "visible": "@.kind==float", "command": "setting.step", "args": { "key": "{@.key}", "delta": 1 }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
+                    { "type": "button", "id": "edit", "text": "Edit…", "visible": "@.kind==text", "command": "setting.edit", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } },
+                    { "type": "button", "id": "edit-shortcut", "text": "Edit…", "visible": "@.kind==shortcut", "command": "setting.edit", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } }
                   ]
                 },
                 {
                   "type": "stack",
+                  "id": "reset-slot",
                   "sizeGroup": "reset",
                   "reserve": true,
                   "style": { "flex-direction": "row", "flex-shrink": "0" },
                   "children": [
-                    { "type": "button", "icon": "arrow-counter-clockwise", "text": "Reset", "visible": "@.changed", "command": "setting.reset", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } }
+                    { "type": "button", "id": "reset", "icon": "arrow-counter-clockwise", "text": "Reset", "visible": "@.changed", "command": "setting.reset", "args": { "key": "{@.key}" }, "style": { "flex-grow": "1", "flex-shrink": "1", "min-width": "0", "margin-left": "$space.1", "overflow": "hidden", "text-overflow": "ellipsis" } }
                   ]
                 }
               ]

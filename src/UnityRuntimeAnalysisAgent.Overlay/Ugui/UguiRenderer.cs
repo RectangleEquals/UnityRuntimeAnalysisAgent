@@ -39,6 +39,12 @@ public sealed class UguiRenderer : IOverlayRenderer
     private readonly Dictionary<string, RenderNode> _nodes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (double X, double Y, double W, double H)> _bounds = new(StringComparer.Ordinal); // where each node was drawn, in canvas units
     private readonly TooltipTimer _tooltip = new();
+    private readonly List<ElementSource> _sources = new(); // what the last rebuild drew, for clients that drive the overlay
+    private ViewNode? _shellHeader;
+    private ViewNode? _shellBody;
+    private ViewNode? _cardsNode;
+    private string? _outlinePath;
+    private double _outlineUntil;
     private readonly Dictionary<string, string> _cutTexts = new(StringComparer.Ordinal); // the whole texts of cut-off texts, by the path that shows them as tooltips
     private string? _hoverOwner; // the nearest interactive node being materialized
     private readonly HashSet<GameObject> _cutWired = new(); // cut-off texts that take the pointer themselves
@@ -131,14 +137,14 @@ public sealed class UguiRenderer : IOverlayRenderer
         DragTick();
         PlaceCarets(now);
         var signature = Signature(controller);
-        if (!_dirty && signature == _signature)
+        if (_dirty || signature != _signature)
         {
-            return;
+            _signature = signature;
+            _dirty = false;
+            Rebuild(controller);
         }
 
-        _signature = signature;
-        _dirty = false;
-        Rebuild(controller);
+        PlaceOutline(now); // after the rebuild: it goes over what the rebuild drew
     }
 
     /// <inheritdoc />
@@ -226,6 +232,7 @@ public sealed class UguiRenderer : IOverlayRenderer
 
         _nodes.Clear();
         _bounds.Clear();
+        _sources.Clear();
         _cutTexts.Clear();
         var model = controller.Model;
         if (model.State != OverlayVisibility.Hidden)
@@ -238,6 +245,11 @@ public sealed class UguiRenderer : IOverlayRenderer
 
             DrawCards(controller, width, height);
             DrawTooltip(width, height);
+        }
+
+        if (_pool.TryGetValue("#outline", out var outline))
+        {
+            outline.Used = true; // drawn every frame by PlaceOutline, not by rebuilds: it outlives them
         }
 
         foreach (var stale in _pool.Where(p => !p.Value.Used).ToList())
@@ -255,6 +267,8 @@ public sealed class UguiRenderer : IOverlayRenderer
         var element = Get("arrow", _root!.transform);
         Occupy(rect.X, rect.Y, rect.Width, rect.Height);
         Place(element, rect.X, rect.Y, rect.Width, rect.Height, 0, 0);
+        _bounds["arrow"] = (rect.X, rect.Y, rect.Width, rect.Height);
+        _sources.Add(new ElementSource("arrow", "arrow", ArrowNode, "arrow", null));
         if (!_arrows.TryGetValue(model.Edge, out var texture))
         {
             texture = ArrowTexture.Create(64, model.Edge);
@@ -316,8 +330,11 @@ public sealed class UguiRenderer : IOverlayRenderer
         var shell = Shell(controller);
         _presenter!.CheckedIds.Clear();
         _presenter.CheckedIds.Add("tab-" + model.Tab);
-        var root = _presenter!.Present(shell, controller.Views.Data(model.Tab), panel.Width, panel.Height);
+        var data = controller.Views.Data(model.Tab);
+        var root = _presenter!.Present(shell, data, panel.Width, panel.Height);
         Materialize(root, _root!.transform, panel.X, panel.Y, 0, 0);
+        _sources.Add(new ElementSource("header", "header", _shellHeader!, "shell/header", data));
+        _sources.Add(new ElementSource("panel", "panel/" + model.Tab, _shellBody!, "shell/content/" + (_shellBody!.Id ?? "0"), data));
         Occupy(panel.X, panel.Y, panel.Width, panel.Height);
     }
 
@@ -349,6 +366,8 @@ public sealed class UguiRenderer : IOverlayRenderer
         content.Style["overflow"] = "hidden";
         content.Style["margin-top"] = "$space.3";
         content.Children.Add(body);
+        _shellHeader = header;
+        _shellBody = body;
         var panel = new ViewNode { Type = NodeType.Panel, Id = "panel" };
         panel.Style["width"] = "100%";
         panel.Style["height"] = "100%";
@@ -389,6 +408,8 @@ public sealed class UguiRenderer : IOverlayRenderer
             return;
         }
 
+        _cardsNode = stack;
+        _sources.Add(new ElementSource("cards", "cards", stack, "cards", null));
         var root = _presenter!.Present(new ViewDocument("cards", stack, Array.Empty<string>()), null, 360, double.NaN);
         var model = controller.Model;
         var arrow = EdgeDock.Arrow(model.Edge, model.Offset, Token("size", "arrow", 48), width, height);
@@ -418,6 +439,139 @@ public sealed class UguiRenderer : IOverlayRenderer
         }
 
         Materialize(root, _root!.transform, Math.Max(0, Math.Min(over.X, width - w)), Math.Max(0, Math.Min(y, height - h)), 0, 0);
+    }
+
+    // ---- driving the overlay (OverlayAutomation) ------------------------------------------------------------------------
+
+    // The arrow as an element: a click expands or collapses the panel.
+    private static readonly ViewNode ArrowNode = new() { Type = NodeType.Button, Id = "arrow", Command = "overlay.toggle" };
+
+    /// <inheritdoc />
+    public IReadOnlyList<ElementSource> Sources => _sources;
+
+    /// <inheritdoc />
+    public ElementPlace Locate(string path, string? listPath, int rowIndex)
+    {
+        if (_bounds.TryGetValue(path, out var bounds))
+        {
+            var shown = bounds;
+            foreach (var clip in ClippingAncestors(path))
+            {
+                shown = Intersect(shown, _bounds[clip]); // scrolled out of its list or clipped by its container
+            }
+
+            var onScreen = Intersect(shown, (0, 0, Screen.width / _scale, Screen.height / _scale));
+            var visibility = shown.W < 0.5 || shown.H < 0.5 ? "clipped"
+                : onScreen.W < 0.5 || onScreen.H < 0.5 ? "offscreen"
+                : Math.Abs(onScreen.W - bounds.W) < 0.5 && Math.Abs(onScreen.H - bounds.H) < 0.5 ? "visible"
+                : "partial";
+            return new ElementPlace((bounds.X * _scale, bounds.Y * _scale, bounds.W * _scale, bounds.H * _scale), visibility);
+        }
+
+        // A list row that isn't built (lists build only the rows in view).
+        return listPath is not null && _bounds.ContainsKey(listPath) ? new ElementPlace(null, "clipped") : new ElementPlace(null, "hidden");
+    }
+
+    /// <inheritdoc />
+    public bool ScrollIntoView(string path, string? listPath, int rowIndex)
+    {
+        if (_dirty)
+        {
+            return true; // a scroll is waiting for its redraw: where things are now is out of date
+        }
+
+        if (_bounds.TryGetValue(path, out var bounds))
+        {
+            foreach (var clip in ClippingAncestors(path).Where(Scrolls))
+            {
+                var area = _bounds[clip];
+                var delta = bounds.Y < area.Y ? bounds.Y - area.Y : bounds.Y + bounds.H > area.Y + area.H ? Math.Min(bounds.Y - area.Y, bounds.Y + bounds.H - (area.Y + area.H)) : 0;
+                if (Math.Abs(delta) > 0.5)
+                {
+                    _presenter!.ScrollBy(clip, delta);
+                    _dirty = true;
+                }
+            }
+
+            return true;
+        }
+
+        if (listPath is not null && _bounds.ContainsKey(listPath))
+        {
+            _presenter!.ScrollToRow(listPath, rowIndex);
+            _dirty = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    public void Outline(string path, double seconds)
+    {
+        _outlinePath = path;
+        _outlineUntil = (_context?.Now() ?? 0) + seconds;
+    }
+
+    /// <inheritdoc />
+    public void Run(string command, JsonObject args)
+    {
+        _commands?.Run(command, args, _presenter);
+        _dirty = true;
+    }
+
+    // Whether a clipping container scrolls (a list or table, or overflow: scroll); overflow: hidden only clips.
+    private bool Scrolls(string path) =>
+        _nodes.TryGetValue(path, out var node) && (node.Source.Type is NodeType.List or NodeType.Tree or NodeType.Table || node.Style.Layout.Overflow == Layout.Overflow.Scroll);
+
+    // The containers that clip an element (scrolling lists, overflow hidden), innermost first.
+    private IEnumerable<string> ClippingAncestors(string path)
+    {
+        for (var cut = path.LastIndexOf('/'); cut > 0; cut = path.LastIndexOf('/', cut - 1))
+        {
+            var ancestor = path.Substring(0, cut);
+            if (_nodes.TryGetValue(ancestor, out var node) && node.Clips && _bounds.ContainsKey(ancestor))
+            {
+                yield return ancestor;
+            }
+        }
+    }
+
+    private static (double X, double Y, double W, double H) Intersect((double X, double Y, double W, double H) a, (double X, double Y, double W, double H) b)
+    {
+        var x = Math.Max(a.X, b.X);
+        var y = Math.Max(a.Y, b.Y);
+        return (x, y, Math.Max(0, Math.Min(a.X + a.W, b.X + b.W) - x), Math.Max(0, Math.Min(a.Y + a.H, b.Y + b.H) - y));
+    }
+
+    // The outline around the element OverlayAutomation reveals, every frame until its time is up.
+    private void PlaceOutline(double now)
+    {
+        var element = _pool.TryGetValue("#outline", out var pooled) ? pooled : null;
+        if (_outlinePath is not { } path || now >= _outlineUntil || !_bounds.TryGetValue(path, out var bounds) || _root == null)
+        {
+            if (_outlinePath is not null && now >= _outlineUntil)
+            {
+                _outlinePath = null;
+            }
+
+            if (element is not null && element.Go != null)
+            {
+                element.Go.SetActive(false);
+            }
+
+            return;
+        }
+
+        element = Get("#outline", _root.transform);
+        element.Go.SetActive(true);
+        Place(element, bounds.X - 3, bounds.Y - 3, bounds.W + 6, bounds.H + 6, 0, 0);
+        var image = Binder.Add(element.Go, Binder.Image);
+        Binder.Set(image, "sprite", _sprites!.Get(2, 2));
+        Binder.Set(image, "type", "Sliced");
+        Binder.Set(image, "color", EffectsDriver.Rgba(Color("accent")));
+        Binder.Set(image, "raycastTarget", false);
+        element.Go.transform.SetAsLastSibling();
     }
 
     private void Occupy(double x, double y, double w, double h) =>
@@ -946,7 +1100,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         UnityEngine.Object.DontDestroyOnLoad(go);
         go.AddComponent<AgentOwned>();
         Binder.Add(go, Binder.EventSystem);
-        // The legacy Input class is read by reflection (D-001: it moved to its own module in 2019.1). In games set to
+        // The legacy Input class is read by reflection (it moved to its own module in 2019.1). In games set to
         // "Input System only" it throws, and the legacy module would throw every frame.
         var legacyInputWorks = true;
         var input = Type.GetType("UnityEngine.Input, UnityEngine.InputLegacyModule") ?? Type.GetType("UnityEngine.Input, UnityEngine.CoreModule") ?? Type.GetType("UnityEngine.Input, UnityEngine");

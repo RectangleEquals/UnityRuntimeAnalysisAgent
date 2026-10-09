@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- The in-game overlay: views, themes, the flex layout engine, focus, motion and assets (D-009); renderers follow. Optional at runtime. -->
+  <!-- The in-game overlay: views, themes, the flex layout engine, focus, motion and assets; renderers follow. Optional at runtime. -->
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <RootNamespace>UnityRuntimeAnalysisAgent.Overlay</RootNamespace>

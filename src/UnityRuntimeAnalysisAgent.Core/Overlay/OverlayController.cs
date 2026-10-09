@@ -114,6 +114,9 @@ public sealed partial class OverlayController
     /// <summary>The prompts waiting for the user.</summary>
     public PromptRegistry Prompts { get; }
 
+    /// <summary>The drawn overlay's elements for clients that drive it, or null while no renderer draws it.</summary>
+    public IOverlayAutomation? Automation { get; set; }
+
     /// <summary>The highlights on screen.</summary>
     public HighlightSet Highlights { get; }
 

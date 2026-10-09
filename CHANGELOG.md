@@ -2,7 +2,7 @@
 
 ## 0.1.0-dev (unreleased)
 - Repository and toolchain scaffolding: solution, projects, central package management.
-- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.7`).
+- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.8`).
 - Transport, handshake and discovery: framed connections over a named pipe (restricted to the current user where the
   runtime allows) or a loopback TCP fallback, the token-authenticated `hello` handshake, `ping`, `agent.info`,
   `agent.capabilities`, `cancel` and event subscriptions, and an atomically written discovery file.
@@ -254,3 +254,12 @@
   row, long labels end in …), and its list fills the panel's height.
 - A tab's panel is redrawn only when data its view shows changes (not when a client's connection time or a
   notification's age ticks), and lists keep their scroll position when it is redrawn or when you come back to the tab.
+- Clients can drive the in-game overlay ([driving the overlay](docs/overlay-automation.md)): `overlay.state` and
+  `overlay.setState` (open, collapse, hide, switch tabs), `overlay.snapshot` (its elements with stable ids, what each
+  shows and does, where it is, visible or scrolled away), `overlay.reveal` (open its tab, scroll it into view, outline
+  it), `overlay.invoke` (operate a control as a click would), `overlay.typeText` (type into a text box, and send), and
+  `overlay.settings` / `overlay.setSettings` (read settings; change them for the session or save them). Operating,
+  typing and changing settings need Full mode.
+- uGUI renderer: a scrolled list now draws its rows from its top (they were drawn too low, below an empty band), all its
+  rows share one height (a list mixing headings and rows could not reach its last rows), and scrolling stops at the
+  last row.

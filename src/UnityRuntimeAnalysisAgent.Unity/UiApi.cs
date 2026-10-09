@@ -878,7 +878,7 @@ internal sealed class UiApi : IUiApi
 
     private static bool IsAgentAssembly(Assembly assembly) => assembly.GetName().Name?.StartsWith("UnityRuntimeAnalysisAgent", StringComparison.Ordinal) ?? false;
 
-    // UnityEngine.Input by reflection (D-001): it moved from CoreModule to InputLegacyModule in 2019.1.
+    // UnityEngine.Input by reflection: it moved from CoreModule to InputLegacyModule in 2019.1.
     private static readonly Type? LegacyInput = Type.GetType("UnityEngine.Input, UnityEngine.InputLegacyModule")
         ?? Type.GetType("UnityEngine.Input, UnityEngine.CoreModule") ?? Type.GetType("UnityEngine.Input, UnityEngine");
 
