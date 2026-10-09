@@ -37,6 +37,17 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
     private readonly List<Rect> _occupied = new();
     private readonly List<(VisualElement Bar, double Since)> _carets = new();
     private readonly TooltipTimer _tooltip = new();
+    // In-place refreshes: when only the open tab's data changed, the elements built from it are updated where they are
+    // (texts, values, list rows) instead of being replaced, so nothing under the pointer is lost (a click, a hover, a
+    // scroll position, a tooltip). A change of structure (an element shown or hidden, other choices) still rebuilds.
+    private readonly List<Func<JsonValue?, bool>> _updates = new(); // false: the change needs a rebuild
+    private readonly Dictionary<VisualElement, string> _tipTexts = new(); // tooltips, as they last read
+    private JsonValue? _builtData; // the tab data the last rebuild built from
+    private JsonValue? _liveData; // the tab data now (in-place refreshes)
+    private ViewNode? _shellNode;
+    private bool _refresh; // the open tab's shown data changed: refresh in place
+    private VisualElement? _arrowElement;
+    private string? _arrowTint;
     private readonly List<ElementSource> _sources = new(); // what the last rebuild drew, for clients that drive the overlay
     private readonly Dictionary<string, VisualElement> _elements = new(StringComparer.Ordinal); // by path, as built
     private ViewNode? _shellHeader;
@@ -236,6 +247,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         }
 
         PlaceOutline(root);
+        TintArrow(controller);
 
         Tooltip(root);
         var settings = controller.Settings;
@@ -261,15 +273,87 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         var held = PointerButtons.Held();
         var holding = !_dragging && (held || _heldLastFrame);
         _heldLastFrame = held;
-        if ((!_dirty && signature == _signature) || typing || holding)
+        if (typing || holding)
         {
             return;
         }
 
+        if (!_dirty && signature == _signature)
+        {
+            if (!_refresh)
+            {
+                return;
+            }
+
+            _refresh = false;
+            if (Refresh(controller))
+            {
+                return;
+            }
+        }
+
         _signature = signature;
         _dirty = false;
+        _refresh = false;
         Rebuild(controller, Screen.width / scale, Screen.height / scale);
     }
+
+    // The open tab's data changed and nothing else: updates the elements built from it where they are. False when the
+    // change needs a rebuild (an element shown or hidden, a size group's width, other choices).
+    private bool Refresh(OverlayController controller)
+    {
+        if (_builtData is null || _shellNode is null)
+        {
+            return true; // no panel: nothing shows the tab's data
+        }
+
+        var data = controller.Views.Data(controller.Model.Tab);
+        var groups = SizeGroups.Measure(_shellNode, data, _context!.Theme, GroupTextWidth);
+        if (groups.Count != _groups.Count || groups.Any(g => !_groups.TryGetValue(g.Key, out var width) || Math.Abs(width - g.Value) > 0.5))
+        {
+            return false;
+        }
+
+        _liveData = data;
+        foreach (var update in _updates)
+        {
+            if (!update(data))
+            {
+                return false;
+            }
+        }
+
+        // Clients that drive the overlay read the data too (OverlayAutomation).
+        for (var i = 0; i < _sources.Count; i++)
+        {
+            if (_sources[i].Area is "panel" or "header")
+            {
+                _sources[i] = _sources[i] with { Data = data };
+            }
+        }
+
+        return true;
+    }
+
+    // The arrow's colour follows the clients' activity every frame, in place (a client's every call used to rebuild the
+    // whole panel, which lost its scroll positions and hover).
+    private void TintArrow(OverlayController controller)
+    {
+        if (_arrowElement is null || _arrowElement.panel is null)
+        {
+            return;
+        }
+
+        var tint = OverlayArrow.Tint(OverlayArrow.Status(controller));
+        if (tint != _arrowTint)
+        {
+            _arrowTint = tint;
+            _arrowElement.style.unityBackgroundImageTintColor = Color("$color." + tint);
+        }
+    }
+
+    // The data a handler should use now: the latest tab data in place of what the panel was built from.
+    private JsonValue? Live(JsonValue? data) => data is not null && ReferenceEquals(data, _builtData) ? _liveData : data;
 
     /// <inheritdoc />
     public void Stop()
@@ -786,8 +870,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             : null;
     }
 
-    // A tab's periodic refresh rebuilds the panel only when it shows that tab and a value its view shows changed
-    // (ViewDependencies): a rebuild replaces the elements under the pointer (a click, a scroll position, a tooltip).
+    // A tab's periodic refresh updates the panel only when it shows that tab and a value its view shows changed
+    // (ViewDependencies), and then in place where it can (Refresh): a rebuild replaces the elements under the pointer.
     private void OnRefreshed(string tab)
     {
         if (_context is null || tab != _context.Controller.Model.Tab)
@@ -805,7 +889,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         }
 
         _seen[tab] = key;
-        _dirty = true;
+        _refresh = true; // in place where it can be (Refresh), a rebuild otherwise
     }
 
     private void OnModelChanged(OverlayModel model) => _dirty = true;
@@ -813,8 +897,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
     // The text boxes count by their edits (Version: not the glide, which slides without rebuilds) and the keyboard focus.
     private string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
-        c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Field is { } box ? p.Id + ":" + box.Version : p.Id)),
-        c.Keyboard.Version, string.Join(",", _fieldViews.Select(v => v.TextBox.Version.ToString(CultureInfo.InvariantCulture)).ToArray()));
+        c.EStop.Engaged, string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Field is { } box ? p.Id + ":" + box.Version : p.Id)),
+        c.Keyboard.Version, string.Join(",", _fieldViews.Select(v => v.TextBox.Version.ToString(CultureInfo.InvariantCulture)).ToArray())); // the arrow's tint (client activity) changes in place: TintArrow
 
     private void Rebuild(OverlayController controller, double width, double height)
     {
@@ -823,6 +907,10 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         _layer!.Clear();
         _sources.Clear();
         _elements.Clear();
+        _updates.Clear();
+        _tipTexts.Clear();
+        _builtData = _liveData = null;
+        _shellNode = null;
         _carets.Clear();
         _tooltip.Clear(); // its node is gone
         _fieldViews.Clear();
@@ -835,6 +923,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         var arrowSize = Number(_context!.Theme.Token("$size.arrow", "renderer"), 48);
         var arrow = EdgeDock.Arrow(model.Edge, model.Offset, arrowSize, width, height);
         var arrowElement = Arrow(controller, arrow);
+        _arrowElement = arrowElement;
+        _arrowTint = null;
         _layer.Add(arrowElement);
         _elements["arrow"] = arrowElement;
         _sources.Add(new ElementSource("arrow", "arrow", ArrowNode, "arrow", null));
@@ -862,9 +952,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             var panel = Shell(controller);
             Place(panel, rect.X, rect.Y, rect.Width, rect.Height);
             _layer.Add(panel);
-            var data = controller.Views.Data(controller.Model.Tab);
-            _sources.Add(new ElementSource("header", "header", _shellHeader!, "shell/header", data));
-            _sources.Add(new ElementSource("panel", "panel/" + controller.Model.Tab, _shellBody!, "shell/content/" + (_shellBody!.Id ?? "0"), data));
+            _sources.Add(new ElementSource("header", "header", _shellHeader!, "shell/header", _builtData));
+            _sources.Add(new ElementSource("panel", "panel/" + controller.Model.Tab, _shellBody!, "shell/content/" + (_shellBody!.Id ?? "0"), _builtData));
         }
 
         var cards = Cards(controller);
@@ -975,6 +1064,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         var data = controller.Views.Data(controller.Model.Tab);
         var tabState = new Dictionary<string, NodeState>(StringComparer.Ordinal) { ["tab-" + controller.Model.Tab] = NodeState.Checked };
         _groups = SizeGroups.Measure(panel, data, _context!.Theme, GroupTextWidth);
+        _builtData = _liveData = data;
+        _shellNode = panel;
         return Build(panel, "shell", data, null, tabState);
     }
 
@@ -1152,7 +1243,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         if (node.Tooltip is not null && Bindings.Text(node.Tooltip, data, item) is { Length: > 0 } tip)
         {
             // UI Toolkit's own tooltips only show in the editor: the overlay draws its own (see Tooltip).
-            element.RegisterCallback<PointerEnterEvent>(_ => _tooltip.Enter(element, tip, _context!.Now()));
+            _tipTexts[element] = tip;
+            element.RegisterCallback<PointerEnterEvent>(_ => _tooltip.Enter(element, _tipTexts.TryGetValue(element, out var now) ? now : tip, _context!.Now()));
             element.RegisterCallback<PointerLeaveEvent>(_ => _tooltip.Leave(element));
             element.RegisterCallback<PointerDownEvent>(_ => _tooltip.Clear(), TrickleDown.TrickleDown);
         }
@@ -1176,6 +1268,12 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         }
 
         _elements[path] = element; // for clients that drive the overlay (OverlayAutomation)
+        var live = item is null && data is not null && ReferenceEquals(data, _builtData); // built from the tab's data: refreshed in place
+        if (live)
+        {
+            Updates(element, node, state);
+        }
+
         if (node.Type is not (NodeType.List or NodeType.Tree or NodeType.Table or NodeType.Tabs))
         {
             var index = 0;
@@ -1183,7 +1281,13 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             {
                 var childPath = path + "/" + (child.Id ?? index.ToString(CultureInfo.InvariantCulture));
                 index++;
-                if (Bindings.Visible(child.Visible, data, item))
+                var shown = Bindings.Visible(child.Visible, data, item);
+                if (live && child.Visible is { } condition)
+                {
+                    _updates.Add(d => Bindings.Visible(condition, d, null) == shown); // shown or hidden: a rebuild
+                }
+
+                if (shown)
                 {
                     element.Add(Build(child, childPath, data, item, states));
                 }
@@ -1191,6 +1295,126 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         }
 
         return element;
+    }
+
+    // How an element built from the tab's data follows that data in place (see Refresh).
+    private void Updates(VisualElement element, ViewNode node, NodeState state)
+    {
+        if (node.Text is { } template && template.IndexOf('{') >= 0 && node.Box is null)
+        {
+            _updates.Add(d =>
+            {
+                var text = Bindings.Text(template, d, null);
+                switch (element)
+                {
+                    case Button button when button.Q<Label>() is { } label:
+                        label.text = text; // an icon button's text is in its label
+                        break;
+                    case UnityEngine.UIElements.TextElement textElement:
+                        textElement.text = text;
+                        break;
+                    case Toggle toggle:
+                        toggle.label = text;
+                        break;
+                }
+
+                return true;
+            });
+        }
+
+        if (node.Tooltip is { } tooltip)
+        {
+            _updates.Add(d =>
+            {
+                if (Bindings.Text(tooltip, d, null) is { Length: > 0 } tip)
+                {
+                    _tipTexts[element] = tip;
+                }
+
+                return true;
+            });
+        }
+
+        if (node.Bind is not { } bind)
+        {
+            return;
+        }
+
+        switch (element)
+        {
+            case Toggle toggle:
+                _updates.Add(d =>
+                {
+                    toggle.SetValueWithoutNotify(Bindings.Truthy(Bindings.Value(bind, d, null)));
+                    return true;
+                });
+                break;
+            case Slider slider:
+                _updates.Add(d =>
+                {
+                    if (Bindings.Value(bind, d, null) is JsonNumber n)
+                    {
+                        slider.SetValueWithoutNotify((float)n.GetDouble());
+                    }
+
+                    return true;
+                });
+                break;
+            case DropdownField dropdown:
+                _updates.Add(d =>
+                {
+                    var choices = node.Items is not null && Bindings.Value(node.Items, d, null) is JsonArray array ? array.Select(Bindings.Plain).ToList() : new List<string>();
+                    if (!choices.SequenceEqual(dropdown.choices))
+                    {
+                        return false; // other choices: a rebuild
+                    }
+
+                    dropdown.SetValueWithoutNotify(Bindings.Plain(Bindings.Value(bind, d, null)));
+                    return true;
+                });
+                break;
+            case TextField field:
+                _updates.Add(d =>
+                {
+                    if (field.focusController?.focusedElement != field)
+                    {
+                        field.SetValueWithoutNotify(Bindings.Plain(Bindings.Value(bind, d, null))); // not while it's being edited
+                    }
+
+                    return true;
+                });
+                break;
+            default:
+                if (node.Type == NodeType.Progress && element.childCount > 0)
+                {
+                    var fill = element[0];
+                    _updates.Add(d =>
+                    {
+                        var fraction = Bindings.Value(bind, d, null) is JsonNumber p ? Math.Max(0, Math.Min(1, p.GetDouble())) : 0;
+                        fill.style.width = new Length((float)(fraction * 100), LengthUnit.Percent);
+                        return true;
+                    });
+                }
+                else if (node.Type == NodeType.Sparkline)
+                {
+                    var color = _context!.Theme.Resolve(node, state).Color;
+                    _updates.Add(d =>
+                    {
+                        // Its bars are redrawn inside it (the element itself stays).
+                        var fresh = Sparkline(Bindings.Value(bind, d, null));
+                        element.Clear();
+                        foreach (var bar in fresh.Children().ToList())
+                        {
+                            bar.style.backgroundColor = Rgba(color);
+                            element.Add(bar);
+                        }
+
+                        return true;
+                    });
+                }
+
+                break;
+        }
     }
 
     // A virtualised list or tree: UI Toolkit's ListView, rows from the template, fixed height (or sized to their content
@@ -1205,12 +1429,18 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
         var template = node.Template ?? new ViewNode { Type = NodeType.Text, Text = "{@}" };
         var rowHeight = Number(_context!.Theme.Token("$size.row", "renderer"), 20);
+        var source = new RowSource { Rows = rows, Key = RowsKey(rows) };
         var list = new ListView(rows, (float)rowHeight, PlainItem, (row, i) =>
         {
             row.Clear();
             Plain(row);
-            var (rowItem, depth, rowPath) = rows[i];
-            var content = Build(template, rowPath, data, rowItem, null);
+            if (i >= source.Rows.Count)
+            {
+                return;
+            }
+
+            var (rowItem, depth, rowPath) = source.Rows[i];
+            var content = Build(template, rowPath, Live(data), rowItem, null);
             content.style.flexShrink = 0;
             content.style.paddingLeft = depth * 12;
             if (node.Type == NodeType.Tree && node.ChildrenPath is not null)
@@ -1243,8 +1473,44 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             list.virtualizationMethod = CollectionVirtualizationMethod.DynamicHeight; // rows size to their (wrapped) text
         }
 
+        if (item is null && data is not null && ReferenceEquals(data, _builtData))
+        {
+            // New rows go into the same list: it keeps its scroll position, and rebinds only the rows in view.
+            _updates.Add(d =>
+            {
+                var fresh = new List<(JsonValue Item, int Depth, string Path)>();
+                if (node.Items is not null && Bindings.Value(node.Items, d, null) is { } now)
+                {
+                    Flatten(fresh, Items(now), node, path, 0);
+                }
+
+                var key = RowsKey(fresh);
+                if (key != source.Key)
+                {
+                    // The same list object, its contents swapped: a new one goes through the list's reset (back to the top).
+                    source.Rows.Clear();
+                    source.Rows.AddRange(fresh);
+                    source.Key = key;
+                    list.RefreshItems();
+                }
+
+                return true;
+            });
+        }
+
         return list;
     }
+
+    // A list's rows, swapped in place when the tab's data changes (see Refresh).
+    private sealed class RowSource
+    {
+        public List<(JsonValue Item, int Depth, string Path)> Rows { get; set; } = new();
+
+        public string Key { get; set; } = string.Empty;
+    }
+
+    private static string RowsKey(List<(JsonValue Item, int Depth, string Path)> rows) =>
+        string.Join("\u0001", rows.Select(r => r.Path + "=" + r.Item).ToArray());
 
     // A list row's own element, without Unity's default list styling (its light hover and selection colours made rows
     // unreadable over the overlay's dark theme): the row's content is styled by the overlay's theme, hover included.
@@ -1288,7 +1554,12 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         {
             row.Clear();
             Plain(row);
-            var r = TableRow(node, node.Columns.Select(c => Bindings.Plain(Bindings.Value("@." + c.Bind, data, rows[i]))).ToList(), "value");
+            if (i >= rows.Count)
+            {
+                return;
+            }
+
+            var r = TableRow(node, node.Columns.Select(c => Bindings.Plain(Bindings.Value("@." + c.Bind, Live(data), rows[i]))).ToList(), "value");
             if (node.Command is not null)
             {
                 var rowItem = rows[i];
@@ -1303,6 +1574,25 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         };
         list.style.flexGrow = 1;
         table.Add(list);
+        if (item is null && data is not null && ReferenceEquals(data, _builtData))
+        {
+            var key = string.Join("\u0001", rows.Select(r => r.ToString()).ToArray());
+            _updates.Add(d =>
+            {
+                var fresh = node.Items is not null && Bindings.Value(node.Items, d, null) is { } now ? Items(now).ToList() : new List<JsonValue>();
+                var freshKey = string.Join("\u0001", fresh.Select(r => r.ToString()).ToArray());
+                if (freshKey != key)
+                {
+                    key = freshKey;
+                    rows.Clear(); // the same list object (a new one resets the list's scroll)
+                    rows.AddRange(fresh);
+                    list.RefreshItems();
+                }
+
+                return true;
+            });
+        }
+
         return table;
     }
 
@@ -1338,6 +1628,11 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
     private VisualElement Tabs(ViewNode node, string path, JsonValue? data, JsonValue? item)
     {
         var visible = node.Children.Where(c => Bindings.Visible(c.Visible, data, item)).ToList();
+        if (item is null && data is not null && ReferenceEquals(data, _builtData))
+        {
+            _updates.Add(d => node.Children.Where(c => Bindings.Visible(c.Visible, d, null)).SequenceEqual(visible)); // other pages: a rebuild
+        }
+
         var container = new VisualElement { name = path };
         if (visible.Count == 0)
         {
@@ -1710,6 +2005,8 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         {
             return;
         }
+
+        data = Live(data); // refreshed in place since it was built
 
         var args = node.Args is not null ? Bindings.ResolveArgs(node.Args, data, item) : new JsonObject();
         if (node.Args is null && item is not null)

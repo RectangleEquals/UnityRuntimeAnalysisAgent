@@ -263,3 +263,7 @@
 - uGUI renderer: a scrolled list now draws its rows from its top (they were drawn too low, below an empty band), all its
   rows share one height (a list mixing headings and rows could not reach its last rows), and scrolling stops at the
   last row.
+- UI Toolkit overlay: when a tab's data changes, the panel updates in place (texts, values, list rows) instead of being
+  rebuilt, so live tabs (Status, Activity) no longer reset what's under the pointer every second; lists keep their
+  scroll position. The arrow's colour follows client activity without redrawing the panel. The panel is still rebuilt
+  when what it shows changes shape (a tab switch, an element shown or hidden).
