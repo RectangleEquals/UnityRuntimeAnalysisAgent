@@ -38,7 +38,7 @@ public sealed class OverlayRuntime : IDisposable
     private IOverlayRenderer? _renderer;
     private int _rendererIndex;
     private List<string> _rendererReasons = new();
-    private CursorState? _savedCursor;
+    private CursorGuard? _cursor;
     private int _restarts;
     private bool _disposed;
 
@@ -48,6 +48,7 @@ public sealed class OverlayRuntime : IDisposable
         _controller = controller;
         _loader = loader;
         _log = log;
+        _cursor = new CursorGuard(log);
         Bundle = bundle;
         _context = new OverlayContext(controller, OverlayFiles.LoadTheme(overlayDir, controller.Settings.Theme, log), bundle, overlayDir, log, () => Time.realtimeSinceStartup);
         _candidates = Candidates(controller.Settings.Renderer, bundle, bundleProblem);
@@ -150,7 +151,7 @@ public sealed class OverlayRuntime : IDisposable
 
         _disposed = true;
         _host.Pump.Ticked -= _tick;
-        RestoreCursor();
+        _cursor?.Dispose();
         _renderer?.Stop();
         _renderer = null;
         _blocker?.Dispose();
@@ -421,36 +422,12 @@ public sealed class OverlayRuntime : IDisposable
         var expanded = _controller.Model.State == OverlayVisibility.Expanded && _controller.Settings.ForceCursorWhenExpanded;
         if (expanded)
         {
-            _savedCursor ??= new CursorState(UnityEngine.Cursor.visible, UnityEngine.Cursor.lockState);
-            UnityEngine.Cursor.visible = true;
-            UnityEngine.Cursor.lockState = CursorLockMode.None;
+            _cursor?.Hold();
         }
         else
         {
-            RestoreCursor();
+            _cursor?.Release();
         }
     }
 
-    private void RestoreCursor()
-    {
-        if (_savedCursor is { } saved)
-        {
-            UnityEngine.Cursor.visible = saved.Visible;
-            UnityEngine.Cursor.lockState = saved.LockState;
-            _savedCursor = null;
-        }
-    }
-
-    private sealed class CursorState
-    {
-        public CursorState(bool visible, CursorLockMode lockState)
-        {
-            Visible = visible;
-            LockState = lockState;
-        }
-
-        public bool Visible { get; }
-
-        public CursorLockMode LockState { get; }
-    }
 }

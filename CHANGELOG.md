@@ -280,3 +280,6 @@
   time, and the selected tab is always in view. Rows of buttons (Logs, Control) wrap instead of running off the panel,
   the Logs list fills the panel instead of squeezing the rows above it, clickable texts such as tabs are centred
   vertically like buttons, and long client lines on Status end in an ellipsis.
+- Overlay: closing the panel gives the game the cursor it asked for while the panel was open (for example a game that
+  locks the cursor when its own menu closes), instead of the cursor from before the panel opened, which could leave the
+  cursor free and mouse-look off.
