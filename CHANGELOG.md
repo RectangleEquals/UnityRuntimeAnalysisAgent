@@ -293,3 +293,7 @@
 - Input Manager layer: virtual keys, mouse buttons, wheel, pointer and pad buttons reach the game's `UnityEngine.Input`
   queries (keys, mouse and joystick buttons, named buttons and axes with the default Input Manager's bindings, `anyKey`,
   `mousePosition`, `mouseScrollDelta`); real input is read separately so the player can always take over.
+- Rewired layer: in games that use Rewired, the game's own actions (by name or id: buttons and axes) can be driven, and
+  virtual keys, mouse buttons, mouse movement and wheel reach the actions the player's control maps bind them to (pad
+  buttons and sticks too, through a connected gamepad's maps). `input.capabilities` lists the game's actions. Any real
+  input through any of the game's input stacks takes over.

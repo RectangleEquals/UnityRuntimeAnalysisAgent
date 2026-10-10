@@ -132,6 +132,8 @@ public sealed class InputSessions
     private int _next;
     private InputSession? _current;
     private bool? _backgroundBefore;
+    private List<IInputLayer> _live = new(); // the layers that apply, refreshed about once a second while a session is open
+    private double _liveAt = double.NegativeInfinity;
 
     /// <summary>Creates the sessions over the game's input layers.</summary>
     public InputSessions(InputSettings settings, IEnumerable<IInputLayer> layers, Func<(long Frame, double Realtime)> clock)
@@ -391,7 +393,7 @@ public sealed class InputSessions
 
         switch (session.State)
         {
-            case InputSessionState.Countdown when session.UserTakeover && GameFocused() && _layers.Any(l => l.Status.Available && l.RealInput()):
+            case InputSessionState.Countdown when session.UserTakeover && GameFocused() && Live().Any(l => l.RealInput()):
                 Pause(session, "user");
                 return;
             case InputSessionState.Countdown when now >= session.CountdownUntil:
@@ -404,7 +406,7 @@ public sealed class InputSessions
                 Finish(session, "maxDuration");
                 return;
             case InputSessionState.Active when session.UserTakeover && now - session.ActiveSince > TakeoverGraceSeconds && GameFocused()
-                && session.Layers.Any(l => l.RealInput()):
+                && Live().Any(l => l.RealInput()): // the player's input through any of the game's stacks
                 Pause(session, "user");
                 return;
         }
@@ -416,7 +418,20 @@ public sealed class InputSessions
     }
 
     // The takeover chord, on the keyboard or a pad (works whatever the session's takeover setting).
-    private bool Chord() => _layers.Any(l => l.Status.Available && l.RealChord(Settings.TakeoverKey, Settings.TakeoverPad));
+    private bool Chord() => Live().Any(l => l.RealChord(Settings.TakeoverKey, Settings.TakeoverPad));
+
+    // The layers that apply (their status is reflection-heavy: not read every frame).
+    private List<IInputLayer> Live()
+    {
+        var now = _clock().Realtime;
+        if (now - _liveAt >= 1)
+        {
+            _live = _layers.Where(l => l.Status.Available).ToList();
+            _liveAt = now;
+        }
+
+        return _live;
+    }
 
     private void Activate(InputSession session, double now)
     {
