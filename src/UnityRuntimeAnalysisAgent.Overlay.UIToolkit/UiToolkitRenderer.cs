@@ -903,7 +903,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
     private string Signature(OverlayController c) => string.Join("|",
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
         c.EStop.Engaged, string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Field is { } box ? p.Id + ":" + box.Version : p.Id)),
-        c.Keyboard.Version, string.Join(",", _fieldViews.Select(v => v.TextBox.Version.ToString(CultureInfo.InvariantCulture)).ToArray())); // the arrow's tint (client activity) changes in place: TintArrow
+        c.Keyboard.Version, string.Join(",", _fieldViews.Select(v => v.TextBox.Version.ToString(CultureInfo.InvariantCulture)).ToArray()), InputNoticeView.Signature(c.Input?.Notice)); // the arrow's tint (client activity) changes in place: TintArrow
 
     private void Rebuild(OverlayController controller, double width, double height)
     {
@@ -920,6 +920,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         _tooltip.Clear(); // its node is gone
         _fieldViews.Clear();
         var model = controller.Model;
+        InputNotice(controller, width, height); // shown even while the overlay is hidden: it's a warning
         if (model.State == OverlayVisibility.Hidden)
         {
             return;
@@ -984,6 +985,41 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         }
 
         RestoreScroll(_layer);
+    }
+
+    // The input session's banner (top centre) and, while the assistant is in control, the frame around the screen.
+    private void InputNotice(OverlayController controller, double width, double height)
+    {
+        if (controller.Input?.Notice is not { } notice)
+        {
+            return;
+        }
+
+        if (InputNoticeView.Framed(notice))
+        {
+            var index = 0;
+            foreach (var (x, y, barWidth, barHeight) in InputNoticeView.FrameBars(width, height))
+            {
+                var bar = Build(InputNoticeView.Bar(index), "input-frame-" + index++, null, null, null);
+                bar.pickingMode = PickingMode.Ignore;
+                Place(bar, x, y, barWidth, barHeight);
+                _layer!.Add(bar);
+            }
+        }
+
+        var banner = Build(InputNoticeView.Banner(notice, Escape), "input-banner", null, null, null);
+        banner.pickingMode = PickingMode.Ignore;
+        foreach (var child in banner.Query<VisualElement>().ToList())
+        {
+            child.pickingMode = PickingMode.Ignore; // never takes the pointer from the game
+        }
+
+        var w = Math.Min(InputNoticeView.MaxWidth, width - 32);
+        banner.style.position = UnityEngine.UIElements.Position.Absolute;
+        banner.style.left = (float)((width - w) / 2);
+        banner.style.top = 12;
+        banner.style.width = (float)w;
+        _layer!.Add(banner);
     }
 
     private VisualElement Arrow(OverlayController controller, OverlayRect rect)

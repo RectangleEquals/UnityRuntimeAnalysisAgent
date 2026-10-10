@@ -108,7 +108,7 @@ public sealed class ConfigKey
 public static class ConfigKeys
 {
     /// <summary>The overlay Settings tab's sections, in the order it lists them (see <see cref="ConfigKey.Group"/>).</summary>
-    public static IReadOnlyList<string> OverlayGroups { get; } = new[] { "General", "Shortcuts", "Position and Size", "Appearance", "Mouse and Keyboard", "Text Boxes", "Inspector and Time", "E-STOP", "Gamepad" };
+    public static IReadOnlyList<string> OverlayGroups { get; } = new[] { "General", "Shortcuts", "Position and Size", "Appearance", "Mouse and Keyboard", "Text Boxes", "Inspector and Time", "E-STOP", "Gamepad", "Input Driving" };
 
     /// <summary>All settings, in file order.</summary>
     public static IReadOnlyList<ConfigKey> All { get; } = new[]
@@ -167,5 +167,10 @@ public static class ConfigKeys
         new ConfigKey("Overlay", "Gamepad", ConfigKind.Choice, "auto", "Control the overlay with a gamepad.", "auto", "off").Shown("Gamepad Control", "auto: the overlay can be used with a gamepad when one is connected. off: mouse and keyboard only.").In("Gamepad"),
         new ConfigKey("Overlay", "GamepadToggle", ConfigKind.Text, "Select+Start", "The gamepad buttons pressed together to expand or collapse the overlay.").Shown("Gamepad Shortcut", "The gamepad buttons pressed together to open or close the overlay, joined with + (for example Select+Start).").In("Gamepad"),
         new ConfigKey("Overlay", "GamepadPausesGame", ConfigKind.Bool, "false", "Pause the game while the overlay has gamepad focus.").Shown("Gamepad Pauses Game", "On: the game pauses while you are using the overlay with a gamepad.").In("Gamepad"),
+        new ConfigKey("Input", "Enabled", ConfigKind.Bool, "true", "Allow clients to drive the game's input (keys, mouse, gamepad, actions) in input sessions you are warned about and can take over.").Shown("Allow Input Driving", "On: an assistant connected to the agent may play the game for you in an input session: you get a countdown warning first, a banner while it's in control, and using your own controls (or the takeover shortcut) gives control back at once. Off: no input session can start, and an open one ends. Applies at once.").In("Input Driving"),
+        new ConfigKey("Input", "Countdown", ConfigKind.Float, "3", "Seconds of warning before an input session starts controlling the game (and before it resumes).").Ranged(0, 10, 0.5).Shown("Warning Countdown", "How long, in seconds, the warning shows before an input session starts controlling the game, or resumes after you took over. Applies at once.").In("Input Driving"),
+        new ConfigKey("Input", "MaxSessionMs", ConfigKind.Int, "600000", "The longest an input session may run, in milliseconds (it ends by itself then).").Shown("Longest Input Session (ms)", "An input session ends by itself after this many milliseconds, however long the client asked for (600000 = 10 minutes). Applies to sessions that start afterwards.").In("Input Driving"),
+        new ConfigKey("Input", "TakeoverKey", ConfigKind.Shortcut, "Backspace + LeftControl + LeftAlt", "The key combination that takes control back from an input session.").Shown("Takeover Shortcut", "Pressing these keys together takes control back from an input session at once, even one set to ignore your other input. Applies at once.").In("Input Driving"),
+        new ConfigKey("Input", "TakeoverPad", ConfigKind.Text, "LeftShoulder+RightShoulder", "The gamepad buttons pressed together to take control back from an input session.").Shown("Gamepad Takeover", "Pressing these gamepad buttons together takes control back from an input session at once, joined with + (for example LeftShoulder+RightShoulder). Applies at once.").In("Input Driving"),
     };
 }

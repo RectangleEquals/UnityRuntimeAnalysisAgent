@@ -9,6 +9,9 @@ namespace UnityRuntimeAnalysisAgent.Core.Overlay;
 /// <summary>What E-STOP does, step by step (wired to the agent's services by the host; fakes in tests).</summary>
 public sealed class EStopSteps
 {
+    /// <summary>Ends the input session (everything virtual released) before anything else.</summary>
+    public Action EndInput { get; set; } = () => { };
+
     /// <summary>Lowers the mode to ReadOnly; returns the mode now in effect.</summary>
     public Func<AgentMode> LowerMode { get; set; } = () => AgentMode.ReadOnly;
 
@@ -70,6 +73,7 @@ public sealed class EStop
         Engaged = true;
         var failures = new List<string>();
         _log.Warning("E-STOP engaged by the user.");
+        Step("end the input session", () => { _steps.EndInput(); return true; }, false, failures);
         var mode = Step("lower the mode to ReadOnly", _steps.LowerMode, AgentMode.ReadOnly, failures);
         var patches = Step("revert live patches", _steps.RevertPatches, 0, failures);
         var instrumentation = Step("remove instrumentation", _steps.RemoveInstrumentation, 0, failures);

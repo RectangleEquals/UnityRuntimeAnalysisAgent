@@ -212,7 +212,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         Screen.width, Screen.height, c.Model.State, c.Model.Edge, c.Model.Offset.ToString("0.###", CultureInfo.InvariantCulture), c.Model.Docked, c.Model.Tab,
         c.EStop.Engaged, OverlayArrow.Status(c), string.Join(",", c.Toasts.Visible.Select(t => t.Id + "x" + t.Count)), string.Join(",", c.Prompts.Pending.Select(p => p.Field is { } box ? p.Id + ":" + box.Version : p.Id)),
         c.Keyboard.Version, string.Join(",", _textFields.Select(f => f.Box.Version + ":" + f.Box.ShownFirstLine).ToArray()),
-        _presenter?.Hovered, _presenter?.Pressed, _presenter?.Focused, _tooltip.Shown(_context!.Now()));
+        _presenter?.Hovered, _presenter?.Pressed, _presenter?.Focused, _tooltip.Shown(_context!.Now()), InputNoticeView.Signature(c.Input?.Notice));
 
     private void Rebuild(OverlayController controller)
     {
@@ -252,6 +252,8 @@ public sealed class UguiRenderer : IOverlayRenderer
             DrawCards(controller, width, height);
             DrawTooltip(width, height);
         }
+
+        DrawInputNotice(controller, width, height); // shown even while the overlay is hidden: it's a warning
 
         if (_pool.TryGetValue("#outline", out var outline))
         {
@@ -379,6 +381,32 @@ public sealed class UguiRenderer : IOverlayRenderer
         panel.Children.Add(header);
         panel.Children.Add(content);
         return new ViewDocument("shell", panel, Array.Empty<string>());
+    }
+
+    // The input session's banner (top centre) and, while the assistant is in control, the frame around the screen. Neither
+    // takes the pointer (no background raycasts: they aren't interactive).
+    private void DrawInputNotice(OverlayController controller, double width, double height)
+    {
+        if (controller.Input?.Notice is not { } notice)
+        {
+            return;
+        }
+
+        if (InputNoticeView.Framed(notice))
+        {
+            var index = 0;
+            foreach (var (x, y, barWidth, barHeight) in InputNoticeView.FrameBars(width, height))
+            {
+                var bar = InputNoticeView.Bar(index++);
+                bar.Style["width"] = barWidth.ToString(CultureInfo.InvariantCulture);
+                bar.Style["height"] = barHeight.ToString(CultureInfo.InvariantCulture);
+                Materialize(_presenter!.Present(new ViewDocument(bar.Id!, bar, Array.Empty<string>()), null, barWidth, barHeight), _root!.transform, x, y, 0, 0);
+            }
+        }
+
+        var w = Math.Min(InputNoticeView.MaxWidth, width - 32);
+        var banner = _presenter!.Present(new ViewDocument("input-banner", InputNoticeView.Banner(notice, Escape), Array.Empty<string>()), null, w, double.NaN);
+        Materialize(banner, _root!.transform, (width - banner.Rect.Width) / 2, 12, 0, 0);
     }
 
     // Toasts (always, next to the arrow) and prompt cards.

@@ -191,6 +191,9 @@ public interface IUnityApi
     /// <summary>uGUI and TextMeshPro, or null without Unity.</summary>
     IUiApi? Ui { get; }
 
+    /// <summary>The ways into the game's input, empty without Unity.</summary>
+    System.Collections.Generic.IReadOnlyList<UnityRuntimeAnalysisAgent.Core.Input.IInputLayer> InputLayers { get; }
+
     /// <summary>Screen and camera captures, or null without Unity.</summary>
     ICaptureApi? Capture { get; }
 

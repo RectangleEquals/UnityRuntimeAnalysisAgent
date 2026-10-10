@@ -283,3 +283,10 @@
 - Overlay: closing the panel gives the game the cursor it asked for while the panel was open (for example a game that
   locks the cursor when its own menu closes), instead of the cursor from before the panel opened, which could leave the
   cursor free and mouse-look off.
+- Input sessions (protocol `0.1.0-dev.9`, `input.*`): a client can drive the game's input only inside a session the
+  player is warned about — a countdown banner (who, why, what will be driven, how to take over), a banner and a frame
+  around the screen while it's in control, and an end notice. Any real input in the game, or the takeover shortcut
+  (`Input.TakeoverKey`, `Input.TakeoverPad`), pauses it and releases everything; it also ends on E-STOP, a time limit,
+  the client disconnecting, or `Input.Enabled` switched off. The game keeps running while it's in the background.
+  Held keys, mouse, gamepad and action values, frame-accurate taps and timed sequences. New `[Input]` settings, also
+  in the overlay's Settings tab.

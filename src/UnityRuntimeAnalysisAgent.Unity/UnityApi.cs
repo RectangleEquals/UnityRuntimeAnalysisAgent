@@ -1,11 +1,14 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityRuntimeAnalysisAgent.Core.Abstractions;
 using UnityRuntimeAnalysisAgent.Core.Hosting;
+using UnityRuntimeAnalysisAgent.Core.Input;
+using UnityRuntimeAnalysisAgent.Unity.Input;
 
 namespace UnityRuntimeAnalysisAgent.Unity;
 
@@ -22,6 +25,7 @@ public sealed class UnityApi : IUnityApi
     private readonly IAgentLogger _log;
     private GameObject? _host;
     private GameControl? _control;
+    private IReadOnlyList<IInputLayer>? _inputLayers;
     private Action? _tick;
     private Action? _endOfFrame;
     private int _mainThreadId;
@@ -79,6 +83,9 @@ public sealed class UnityApi : IUnityApi
 
     /// <inheritdoc />
     public IUiApi? Ui { get; } = new UiApi();
+
+    /// <inheritdoc />
+    public IReadOnlyList<IInputLayer> InputLayers => _inputLayers ??= InputLayerSet.Create();
 
     /// <inheritdoc />
     public ICaptureApi? Capture { get; } = new CaptureApi();

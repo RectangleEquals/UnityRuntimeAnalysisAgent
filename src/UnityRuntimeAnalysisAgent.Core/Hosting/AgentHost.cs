@@ -15,6 +15,7 @@ using UnityRuntimeAnalysisAgent.Core.Data;
 using UnityRuntimeAnalysisAgent.Core.Diagnostics;
 using UnityRuntimeAnalysisAgent.Core.Dispatch;
 using UnityRuntimeAnalysisAgent.Core.Execution;
+using UnityRuntimeAnalysisAgent.Core.Input;
 using UnityRuntimeAnalysisAgent.Core.Instrumentation;
 using UnityRuntimeAnalysisAgent.Core.Jobs;
 using UnityRuntimeAnalysisAgent.Core.Overlay;
@@ -188,6 +189,30 @@ public sealed class AgentHost : IDisposable
             Log.Warning(warning);
         }
 
+        // Input sessions: every frame on the main thread; they end on E-STOP, on a disconnect, and when
+        // the mode no longer allows driving the game.
+        var inputSettings = InputSettings.Read(config);
+        foreach (var warning in inputSettings.Warnings)
+        {
+            Log.Warning(warning);
+        }
+
+        Input = new InputSessions(inputSettings, unity?.InputLayers ?? Array.Empty<IInputLayer>(), () => (Pump.Clock.FrameCount, Pump.Clock.Realtime))
+        {
+            Emit = e => Events.Publish(EventKinds.InputSession, e),
+            GameFocused = () => unity?.Control?.ReadApp().IsFocused ?? true,
+            Allowed = () => Modes.Allows(AgentMode.Full),
+        };
+        if (unity?.Control is { } app)
+        {
+            Input.GetRunInBackground = () => app.RunInBackground;
+            Input.SetRunInBackground = value => app.RunInBackground = value;
+        }
+
+        Events.EmittedKinds.Add(EventKinds.InputSession);
+        Pump.Ticked += _ => Input.Tick();
+        Dispatcher.Register(new InputService(Input, Pump, Jobs));
+
         var overlaySettings = OverlaySettings.Read(config);
         foreach (var warning in overlaySettings.Warnings)
         {
@@ -197,9 +222,13 @@ public sealed class AgentHost : IDisposable
         if (overlaySettings.Enabled)
         {
             Overlay = CreateOverlay(overlaySettings, control);
+            Overlay.Input = Input;
             Dispatcher.Register(new OverlayService(Overlay, Data, Pump));
         }
     }
+
+    /// <summary>Input sessions: clients driving the game's input, with the user warned and able to take over.</summary>
+    public InputSessions Input { get; }
 
     /// <summary>The overlay's model layer, when <c>Overlay.Enabled</c> (a renderer draws it).</summary>
     public OverlayController? Overlay { get; }
@@ -590,6 +619,7 @@ public sealed class AgentHost : IDisposable
             }
 
             Session.CancelAll(connection);
+            Input.OnDisconnect(connection.Id);
             Instrumentation.OnDisconnect(connection.Id.ToString(CultureInfo.InvariantCulture));
             Rules.OnDisconnect(connection.Id.ToString(CultureInfo.InvariantCulture));
             release();
@@ -608,6 +638,7 @@ public sealed class AgentHost : IDisposable
                 Modes.Lower(AgentMode.ReadOnly);
                 return Modes.Current;
             },
+            EndInput = () => Input.EndNow("estop"),
             RevertPatches = () => Execution.RevertPatches(),
             RemoveInstrumentation = Instrumentation.RemoveAll,
             CancelJobs = () => Jobs.CancelActive(),
@@ -747,6 +778,8 @@ public sealed class AgentHost : IDisposable
         public IGameControl? Control => null;
 
         public IUiApi? Ui => null;
+
+        public IReadOnlyList<IInputLayer> InputLayers => Array.Empty<IInputLayer>();
 
         public ICaptureApi? Capture => null;
 

@@ -7,6 +7,7 @@ using UnityLudometry.Protocol.Envelopes;
 using UnityLudometry.Protocol.Json;
 using UnityRuntimeAnalysisAgent.Core.Dispatch;
 using UnityRuntimeAnalysisAgent.Core.Hosting;
+using UnityRuntimeAnalysisAgent.Core.Input;
 
 namespace UnityRuntimeAnalysisAgent.Core.Overlay;
 
@@ -50,7 +51,7 @@ public sealed partial class OverlayController
     {
         var rows = new JsonArray();
         string? group = null;
-        foreach (var key in ConfigKeys.All.Where(k => k.Section == "Overlay").OrderBy(k => k.Group is { } g ? ConfigKeys.OverlayGroups.ToList().IndexOf(g) : int.MaxValue))
+        foreach (var key in ConfigKeys.All.Where(InSettingsTab).OrderBy(k => k.Group is { } g ? ConfigKeys.OverlayGroups.ToList().IndexOf(g) : int.MaxValue))
         {
             var full = key.Section + "." + key.Name;
             var value = SettingValue(key);
@@ -114,7 +115,14 @@ public sealed partial class OverlayController
     public static readonly IReadOnlyCollection<string> LiveSettings = new HashSet<string>(StringComparer.Ordinal)
     {
         "Overlay.WheelLatch", "Overlay.DragScrollStartSpeed", "Overlay.DragScrollTopSpeed", "Overlay.DragScrollRampDistance",
+        "Input.Enabled", "Input.Countdown", "Input.MaxSessionMs", "Input.TakeoverKey", "Input.TakeoverPad",
     };
+
+    /// <summary>The input sessions, whose settings change here too (set by the host).</summary>
+    public InputSessions? Input { get; set; }
+
+    // The settings the Settings tab shows: the overlay's and input driving's.
+    private static bool InSettingsTab(ConfigKey key) => key.Section is "Overlay" or "Input";
 
     /// <summary>
     /// Changes overlay settings (<c>overlay.setSettings</c>): for this session only (live settings only: nothing is saved),
@@ -130,7 +138,7 @@ public sealed partial class OverlayController
         {
             var (fullKey, value) = (pair.Key, pair.Value);
             var key = Find(fullKey);
-            if (key is null || key.Section != "Overlay")
+            if (key is null || !InSettingsTab(key))
             {
                 rejected.Add((fullKey, "Not an overlay setting."));
                 continue;
@@ -167,7 +175,7 @@ public sealed partial class OverlayController
 
     /// <summary>The overlay settings with what <c>overlay.settings</c> reports: value in effect, saved value, range, live or not.</summary>
     public IReadOnlyList<(ConfigKey Key, string Value, string Saved, bool AppliesNow)> SettingStates() =>
-        ConfigKeys.All.Where(k => k.Section == "Overlay")
+        ConfigKeys.All.Where(InSettingsTab)
             .Select(k => (k, SettingValue(k), SavedValue(k), LiveSettings.Contains(k.Section + "." + k.Name)))
             .ToList();
 
@@ -213,6 +221,9 @@ public sealed partial class OverlayController
                 return true;
             case "Overlay.DragScrollRampDistance":
                 Settings.DragScrollRampDistance = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                return true;
+            case "Input.Enabled" or "Input.Countdown" or "Input.MaxSessionMs" or "Input.TakeoverKey" or "Input.TakeoverPad" when Input is { } input:
+                input.Settings.Apply(fullKey.Substring("Input.".Length), value);
                 return true;
             default:
                 return false;

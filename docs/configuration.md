@@ -62,6 +62,11 @@ agent logs a warning saying so.
 | `Overlay.Gamepad` | `auto` | Control the overlay with a gamepad. Values: `auto`, `off`. |
 | `Overlay.GamepadToggle` | `Select+Start` | The gamepad buttons pressed together to expand or collapse the overlay. Buttons: `A`, `B`, `X`, `Y`, `LB`, `RB`, `LT`, `RT`, `Select`, `Start`, `LS`, `RS`, and with the Input System package `Up`, `Down`, `Left`, `Right`. |
 | `Overlay.GamepadPausesGame` | `false` | Pause the game while the overlay has gamepad focus. |
+| `Input.Enabled` | `true` | Allow clients to drive the game's input (keys, mouse, gamepad, actions) in input sessions you are warned about and can take over. |
+| `Input.Countdown` | `3` | Seconds of warning before an input session starts controlling the game (and before it resumes). From 0 to 10. |
+| `Input.MaxSessionMs` | `600000` | The longest an input session may run, in milliseconds (it ends by itself then). |
+| `Input.TakeoverKey` | `Backspace + LeftControl + LeftAlt` | The key combination that takes control back from an input session. |
+| `Input.TakeoverPad` | `LeftShoulder+RightShoulder` | The gamepad buttons pressed together to take control back from an input session. Buttons: `south`, `east`, `west`, `north`, `LeftShoulder`, `RightShoulder`, `LeftStickPress`, `RightStickPress`, `Select`, `Start`. |
 
 Settings for features that aren't finished yet (instrumentation, logs, rules, the overlay) are already in the file, so it
 lists everything from the start; they take effect as those features arrive. Shortcuts use BepInEx notation (for example
