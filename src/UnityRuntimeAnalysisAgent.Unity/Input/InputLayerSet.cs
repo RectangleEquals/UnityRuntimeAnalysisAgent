@@ -7,5 +7,5 @@ namespace UnityRuntimeAnalysisAgent.Unity.Input;
 internal static class InputLayerSet
 {
     /// <summary>One instance of each layer.</summary>
-    public static IReadOnlyList<IInputLayer> Create() => System.Array.Empty<IInputLayer>();
+    public static IReadOnlyList<IInputLayer> Create() => new IInputLayer[] { new InputManagerLayer() };
 }

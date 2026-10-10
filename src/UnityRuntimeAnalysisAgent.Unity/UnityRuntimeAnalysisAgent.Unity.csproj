@@ -9,5 +9,7 @@
     <ProjectReference Include="..\UnityRuntimeAnalysisAgent.Core\UnityRuntimeAnalysisAgent.Core.csproj" />
     <!-- Compile-only baseline Unity API (see Directory.Packages.props). The game supplies UnityEngine at runtime. -->
     <PackageReference Include="UnityEngine.Modules" PrivateAssets="all" ExcludeAssets="runtime" />
+    <!-- Compile-only: HarmonyX is provided by the loader at runtime (input layers patch the game's input queries). -->
+    <PackageReference Include="HarmonyX" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
 </Project>

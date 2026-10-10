@@ -290,3 +290,6 @@
   the client disconnecting, or `Input.Enabled` switched off. The game keeps running while it's in the background.
   Held keys, mouse, gamepad and action values, frame-accurate taps and timed sequences. New `[Input]` settings, also
   in the overlay's Settings tab.
+- Input Manager layer: virtual keys, mouse buttons, wheel, pointer and pad buttons reach the game's `UnityEngine.Input`
+  queries (keys, mouse and joystick buttons, named buttons and axes with the default Input Manager's bindings, `anyKey`,
+  `mousePosition`, `mouseScrollDelta`); real input is read separately so the player can always take over.
