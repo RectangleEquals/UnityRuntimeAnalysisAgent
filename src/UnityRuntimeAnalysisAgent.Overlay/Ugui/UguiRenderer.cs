@@ -594,10 +594,17 @@ public sealed class UguiRenderer : IOverlayRenderer
         if ((style.BackgroundColor & 0xFF) != 0 || node.Interactive || node.Clips)
         {
             var image = Binder.Add(element.Go, Binder.Image);
+            Binder.Set(image, "enabled", true);
             Binder.Set(image, "sprite", _sprites!.Get(radius, 0));
             Binder.Set(image, "type", "Sliced");
             Binder.Set(image, "color", EffectsDriver.Rgba(style.BackgroundColor));
             Binder.Set(image, "raycastTarget", node.Interactive || node.Clips);
+        }
+        else if (element.Go.GetComponent(Binder.Image) is { } stale)
+        {
+            // Pooled by path: what was drawn here before (another tab, a hovered row, a rounded button) had a background;
+            // this node has none, so the old one goes (it showed as stray bands and ovals).
+            Binder.Set(stale, "enabled", false);
         }
 
         // Border ring.
@@ -638,8 +645,13 @@ public sealed class UguiRenderer : IOverlayRenderer
         if (node.Source.Type == NodeType.Image && node.Source.Image is { } file && Image(file) is { } picture)
         {
             var raw = Binder.Add(element.Go, Binder.RawImage);
+            Binder.Set(raw, "enabled", true);
             Binder.Set(raw, "texture", picture);
             Binder.Set(raw, "raycastTarget", false);
+        }
+        else if (element.Go.GetComponent(Binder.RawImage) is { } stalePicture)
+        {
+            Binder.Set(stalePicture, "enabled", false); // pooled: an image drawn here before
         }
 
         if (node.Source.Type == NodeType.Progress)
@@ -662,7 +674,11 @@ public sealed class UguiRenderer : IOverlayRenderer
 
         if (node.Clips)
         {
-            Binder.Add(element.Go, Binder.RectMask2D);
+            Binder.Set(Binder.Add(element.Go, Binder.RectMask2D), "enabled", true);
+        }
+        else if (element.Go.GetComponent(Binder.RectMask2D) is { } staleMask)
+        {
+            Binder.Set(staleMask, "enabled", false); // pooled: a mask from what was here before cut this node's content off
         }
 
         if ((node.Interactive || node.Clips) && !element.Wired)
@@ -1046,9 +1062,12 @@ public sealed class UguiRenderer : IOverlayRenderer
         });
         Binder.On(go, "Scroll", e =>
         {
-            if (_nodes.TryGetValue(path, out var node) && node.Clips)
+            // The wheel scrolls the nearest container that scrolls: this element, or the list or view it's in (a row, a
+            // button in a row: taking the pointer, they also take the wheel event, which doesn't go further by itself).
+            var target = Scrolls(path) ? path : ClippingAncestors(path).FirstOrDefault(Scrolls); // (a button clips its text, but doesn't scroll)
+            if (target is not null)
             {
-                _presenter!.ScrollBy(path, -e.Scroll.y * 24);
+                _presenter!.ScrollBy(target, -e.Scroll.y * 24);
                 _dirty = true;
             }
         });

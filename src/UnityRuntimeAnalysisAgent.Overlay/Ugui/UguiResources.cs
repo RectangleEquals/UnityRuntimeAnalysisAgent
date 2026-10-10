@@ -150,6 +150,12 @@ public sealed class UguiFonts : ITextMeasurer
         };
         var width = Math.Ceiling(_generator.GetPreferredWidth(text, settings));
         var height = Math.Ceiling(_generator.GetPreferredHeight(text, settings));
+        if (f == _fallback)
+        {
+            // The OS font (no overlay bundle for this Unity version) draws its descenders a little below the height Unity
+            // reports for it: the next element covered them. The bundle's pixel fonts fit their height exactly.
+            height += Math.Ceiling(s * 0.2);
+        }
         return (noWrap || double.IsInfinity(maxWidth) ? width : Math.Min(width, Math.Ceiling(maxWidth)), height);
     }
 

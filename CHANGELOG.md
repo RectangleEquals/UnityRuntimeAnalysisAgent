@@ -270,3 +270,8 @@
 - UI Toolkit overlay fixes: only list rows and controls highlight on hover (a heading in a row with buttons did, other
   headings didn't); the Status tab's frame-rate sparkline draws its bars (it stacked them into one block, which showed
   as an empty box); plugin rows in Mods & Tests stay on one line (a long one was cut off mid-line).
+- Overlay fixes from a uGUI pass in an Input Manager game: the mouse wheel over the overlay no longer also reaches the
+  game (its wheel queries read "no scroll" to the game's code while the pointer is over the overlay); list rows
+  highlight on hover as in the UI Toolkit overlay, and the wheel over a row or one of its buttons scrolls the list;
+  stray highlight bands and cut-off elements after switching tabs are gone (reused objects kept the background and
+  clipping of what was drawn there before); text in the fallback font no longer has its descenders covered.

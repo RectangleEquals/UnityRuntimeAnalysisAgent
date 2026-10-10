@@ -205,7 +205,8 @@ public sealed class ViewPresenter
 
     private RenderNode Build(ViewNode node, string path, JsonValue? data, JsonValue? item)
     {
-        var state = (node.Command is not null && Hovered == path ? NodeState.Hover : NodeState.None)
+        var rowHover = item is not null && node.Command is null && HasHover(node); // a list row with a look of its own on hover (row:hover)
+        var state = ((node.Command is not null || rowHover) && Hovered == path ? NodeState.Hover : NodeState.None)
             | (Pressed == path ? NodeState.Active : NodeState.None)
             | (Focused == path ? NodeState.Focus : NodeState.None)
             | (node.Id is { } id && CheckedIds.Contains(id) ? NodeState.Checked : NodeState.None);
@@ -226,7 +227,7 @@ public sealed class ViewPresenter
             Command = node.Command,
             Args = node.Args is null ? null : ResolveArgs(node.Args, data, item),
             Tooltip = node.Tooltip is null ? null : Bindings.Text(node.Tooltip, data, item) is { Length: > 0 } tip ? tip : null,
-            Interactive = node.Command is not null || node.Tooltip is not null || node.Type is NodeType.Toggle or NodeType.Slider or NodeType.TextField or NodeType.Dropdown,
+            Interactive = node.Command is not null || node.Tooltip is not null || rowHover || node.Type is NodeType.Toggle or NodeType.Slider or NodeType.TextField or NodeType.Dropdown,
             Clips = style.Layout.Overflow != Overflow.Visible,
         };
         if (render.Text is { Length: > 0 } text && node.Type is NodeType.Text or NodeType.Button or NodeType.Badge or NodeType.Toggle)
@@ -576,6 +577,14 @@ public sealed class ViewPresenter
         var style = node.Layout.Style;
         double Px(Length length) => length.Resolve(node.Layout.Width) is var px && !double.IsNaN(px) ? px : 0;
         return Math.Max(0, node.Layout.Height - Px(style.Padding.Top) - Px(style.Padding.Bottom) - Px(style.Border.Top) - Px(style.Border.Bottom));
+    }
+
+    // Whether the theme gives a node a look of its own on hover.
+    private bool HasHover(ViewNode node)
+    {
+        var plain = _theme.Resolve(node);
+        var hovered = _theme.Resolve(node, NodeState.Hover);
+        return plain.BackgroundColor != hovered.BackgroundColor || plain.BorderColor != hovered.BorderColor || plain.Color != hovered.Color;
     }
 
     // Scroll offsets can't go past the content.

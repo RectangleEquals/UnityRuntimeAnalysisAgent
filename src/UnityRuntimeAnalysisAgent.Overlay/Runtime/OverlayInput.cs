@@ -17,6 +17,9 @@ namespace UnityRuntimeAnalysisAgent.Overlay.Runtime;
 /// Manager's mouse-button queries answer "not pressed" to the game's code while the pointer is over the overlay (UI
 /// event systems still see them, so the overlay and its blocker keep working). Games that only use the Input System
 /// package aren't covered by that patch.
+/// <para>The mouse wheel over the overlay is always the overlay's: the Input Manager's wheel queries answer "no scroll"
+/// to the game's code while the pointer is over it (the same patch, for <c>mouseScrollDelta</c> and scroll-wheel axes),
+/// so scrolling a panel or a text box never also scrolls the game.</para>
 /// </summary>
 public sealed class OverlayInput : IDisposable
 {
@@ -28,6 +31,7 @@ public sealed class OverlayInput : IDisposable
     private static readonly string[] ExemptAssemblies = { "UnityEngine.UI", "UnityEngine.UIElementsModule", "Unity.InputSystem", "UnityRuntimeAnalysisAgent." };
 
     private static volatile bool s_blocking;
+    private static volatile bool s_wheelBlocking;
 
     private static readonly Type? LegacyInput = Type.GetType("UnityEngine.Input, UnityEngine.InputLegacyModule")
         ?? Type.GetType("UnityEngine.Input, UnityEngine.CoreModule") ?? Type.GetType("UnityEngine.Input, UnityEngine");
@@ -37,6 +41,7 @@ public sealed class OverlayInput : IDisposable
     private readonly GamepadReader _gamepad = new();
     private readonly ChordDetector _chord;
     private Harmony? _harmony;
+    private Harmony? _wheelHarmony;
     private bool _legacyPointer = LegacyInput is not null;
 
     /// <summary>Creates it (and applies the world-input patch when it's switched on).</summary>
@@ -49,6 +54,8 @@ public sealed class OverlayInput : IDisposable
         {
             PatchWorldInput();
         }
+
+        PatchWheel();
     }
 
     /// <summary>Whether the pointer was over the overlay this frame.</summary>
@@ -74,6 +81,7 @@ public sealed class OverlayInput : IDisposable
         _pointerY = pointer?.y ?? 0;
         PointerOver = pointer is { } p && occupied.Any(r => r.Contains(p));
         s_blocking = _harmony is not null && PointerOver;
+        s_wheelBlocking = _wheelHarmony is not null && PointerOver;
         if (_controller.Settings.Gamepad == "off")
         {
             return;
@@ -90,8 +98,11 @@ public sealed class OverlayInput : IDisposable
     public void Dispose()
     {
         s_blocking = false;
+        s_wheelBlocking = false;
         _harmony?.UnpatchSelf();
         _harmony = null;
+        _wheelHarmony?.UnpatchSelf();
+        _wheelHarmony = null;
     }
 
     /// <summary>Whether an input query from this call stack is exempt from blocking (UI event handling, the agent).</summary>
@@ -118,6 +129,58 @@ public sealed class OverlayInput : IDisposable
 
         return GamepadReader.InputSystemPointer() is { } p ? new Vector2(p.x, Screen.height - p.y) : null;
     }
+
+    // The wheel over the overlay is the overlay's (see the class summary).
+    private void PatchWheel()
+    {
+        if (LegacyInput is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _wheelHarmony = new Harmony(HarmonyId + ".wheel");
+            if (LegacyInput.GetProperty("mouseScrollDelta", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod() is { } delta)
+            {
+                _wheelHarmony.Patch(delta, postfix: new HarmonyMethod(typeof(OverlayInput).GetMethod(nameof(ScrollDeltaPostfix), BindingFlags.NonPublic | BindingFlags.Static)));
+            }
+
+            var axis = new HarmonyMethod(typeof(OverlayInput).GetMethod(nameof(ScrollAxisPostfix), BindingFlags.NonPublic | BindingFlags.Static));
+            foreach (var name in new[] { "GetAxis", "GetAxisRaw" })
+            {
+                if (LegacyInput.GetMethod(name, BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string) }, null) is { } method)
+                {
+                    _wheelHarmony.Patch(method, postfix: axis);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            _log.Warning($"The overlay couldn't keep the mouse wheel from the game: {e.Message}");
+            _wheelHarmony?.UnpatchSelf();
+            _wheelHarmony = null;
+        }
+    }
+
+    private static void ScrollDeltaPostfix(ref Vector2 __result)
+    {
+        if (__result != Vector2.zero && s_wheelBlocking && !ExemptCaller())
+        {
+            __result = Vector2.zero;
+        }
+    }
+
+    // Scroll-wheel axes by their usual names (the project defines them: Unity's default is "Mouse ScrollWheel").
+    private static void ScrollAxisPostfix(string axisName, ref float __result)
+    {
+        if (__result != 0 && s_wheelBlocking && axisName is not null && axisName.IndexOf("scroll", StringComparison.OrdinalIgnoreCase) >= 0 && !ExemptCaller())
+        {
+            __result = 0;
+        }
+    }
+
+    private static bool ExemptCaller() => Exempt(new StackTrace(2, false).GetFrames()?.Select(f => f.GetMethod()?.DeclaringType?.Assembly.GetName().Name) ?? Enumerable.Empty<string?>());
 
     private void PatchWorldInput()
     {
