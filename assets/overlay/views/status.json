@@ -20,7 +20,7 @@
         "items": "overlay.clients",
         "visible": "overlay.clients",
         "style": { "height": "48px" },
-        "template": { "type": "text", "class": "value", "text": "{@.name} · since {@.since} · {@.messages} messages · {@.bytes} · {@.dropped} dropped" }
+        "template": { "type": "text", "class": "value", "text": "{@.name} · since {@.since} · {@.messages} messages · {@.bytes} · {@.dropped} dropped", "style": { "white-space": "nowrap", "text-overflow": "ellipsis" } }
       },
       { "type": "separator" },
       { "type": "text", "class": "label", "text": "Performance" },

@@ -25,6 +25,10 @@ public static class SizeGroups
         return widths;
     }
 
+    /// <summary>A node's natural width on one line: its text (and icon) or its children, plus its padding and border.</summary>
+    public static double Width(ViewNode node, JsonValue? data, Theme theme, Func<ViewNode, string, double> textWidth) =>
+        Natural(node, data, null, theme, textWidth, reserve: false);
+
     private static void Walk(ViewNode node, JsonValue? data, JsonValue? item, Theme theme, Func<ViewNode, string, double> textWidth, Dictionary<string, double> widths)
     {
         if (node.SizeGroup is { } group && Bindings.Visible(node.Visible, data, item))

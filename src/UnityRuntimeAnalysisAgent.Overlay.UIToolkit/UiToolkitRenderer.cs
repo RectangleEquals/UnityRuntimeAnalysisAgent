@@ -83,6 +83,9 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
     private VisualElement? _layer;
     private EffectsDriver? _effects;
     private OverlayCommands? _commands;
+    private readonly TabStrip _tabStrip = new();
+    private VisualElement? _tabRow; // the strip's row as last built
+    private bool _tabsGliding;
     private IReadOnlyDictionary<string, ViewDocument> _views = new Dictionary<string, ViewDocument>();
     private readonly Dictionary<string, IReadOnlyList<string>> _dependencies = new(StringComparer.Ordinal); // the data paths each tab's view shows
     private Texture2D? _icons;
@@ -181,6 +184,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         _document.panelSettings = _settings;
         _effects = new EffectsDriver(context.Theme, bundle, context.Controller.Settings.Effects);
         _commands = new OverlayCommands(context.Controller, context.Log);
+        _commands.Register(TabStrip.ScrollCommand, args => _tabStrip.Scroll(args["by"] is JsonNumber by ? (int)by.GetDouble() : 0));
         _views = OverlayFiles.LoadViews(context.OverlayDir, context.Log);
         LoadIcons(context.OverlayDir);
         context.Controller.Views.Refreshed += OnRefreshed;
@@ -231,6 +235,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
 
         var controller = _context.Controller;
         _effects?.Tick(_context.Now());
+        GlideTabs();
         var now = TextBox.Clock();
         foreach (var (_, sheet, textBox, start) in _fieldViews)
         {
@@ -949,7 +954,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             var (pw, ph) = controller.Settings.PanelSize is { } size ? ((double)size.Width, (double)size.Height) : (Math.Min(560, width * 0.45), Math.Min(720, height * 0.85));
             var rect = model.Docked ? EdgeDock.Panel(model.Edge, model.Offset, pw, ph, width, height, arrowSize)
                 : new OverlayRect(Math.Max(0, Math.Min(model.FloatingPosition.X, width - pw)), Math.Max(0, Math.Min(model.FloatingPosition.Y, height - ph)), pw, ph);
-            var panel = Shell(controller);
+            var panel = Shell(controller, rect.Width);
             Place(panel, rect.X, rect.Y, rect.Width, rect.Height);
             _layer.Add(panel);
             _sources.Add(new ElementSource("header", "header", _shellHeader!, "shell/header", _builtData));
@@ -1027,26 +1032,46 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         return arrow;
     }
 
-    // The panel: header (tabs, E-STOP, collapse) and the selected tab's view.
-    private VisualElement Shell(OverlayController controller)
+    // The tab strip's row glides between rebuilds, moved in place; a rebuild once it settles dims the arrows.
+    private void GlideTabs()
     {
-        var tabs = new ViewNode { Type = NodeType.Stack, Id = "tabs", Classes = { "tabs" } };
-        tabs.Style["flex-direction"] = "row";
-        tabs.Style["flex-wrap"] = "wrap";
-        tabs.Style["flex-grow"] = "1";
-        foreach (var tab in controller.Settings.VisibleTabs)
+        if (_tabRow?.panel is null || !_tabStrip.Scrolling)
         {
-            var node = new ViewNode { Type = NodeType.Text, Id = "tab-" + tab, Text = Title(tab), Classes = { "tab" }, Command = "tab.open", Args = new JsonObject { { "tab", new JsonString(tab) } } };
-            tabs.Children.Add(node);
+            return;
         }
 
+        var now = TextBox.Clock();
+        var gliding = _tabStrip.Gliding(now);
+        if (!gliding && !_tabsGliding)
+        {
+            return;
+        }
+
+        _tabsGliding = gliding;
+        _tabRow.style.marginLeft = -(float)_tabStrip.ShownAt(now);
+        if (!gliding)
+        {
+            _dirty = true;
+        }
+    }
+
+    // The panel: header (tabs, E-STOP, collapse) and the selected tab's view.
+    private VisualElement Shell(OverlayController controller, double width)
+    {
+        var estop = new ViewNode { Type = NodeType.Button, Id = "estop", Text = controller.EStop.Engaged ? "E-STOP ✓" : "E-STOP", Classes = { "danger" }, Command = "estop" };
+        estop.Style["margin-left"] = "$space.2";
+        var close = new ViewNode { Type = NodeType.Button, Id = "close", Text = "×", Command = "overlay.collapse" };
+        var panel = new ViewNode { Type = NodeType.Panel, Id = "panel" };
+        var theme = _context!.Theme;
+        var available = TabStrip.Available(width, panel, new[] { estop, close }, theme, GroupTextWidth);
+        var tabs = _tabStrip.Build(controller.Settings.VisibleTabs.Select(t => (t, Title(t))).ToList(), controller.Model.Tab, available, Screen.height, theme, GroupTextWidth, TextBox.Clock());
         var header = new ViewNode { Type = NodeType.Stack, Id = "header" };
         header.Style["flex-direction"] = "row";
         header.Style["align-items"] = "center";
         header.Style["flex-shrink"] = "0";
         header.Children.Add(tabs);
-        header.Children.Add(new ViewNode { Type = NodeType.Button, Id = "estop", Text = controller.EStop.Engaged ? "E-STOP ✓" : "E-STOP", Classes = { "danger" }, Command = "estop" });
-        header.Children.Add(new ViewNode { Type = NodeType.Button, Id = "close", Text = "×", Command = "overlay.collapse" });
+        header.Children.Add(estop);
+        header.Children.Add(close);
         var body = _views.TryGetValue(controller.Model.Tab, out var view)
             ? view.Root
             : new ViewNode { Type = NodeType.Text, Id = "missing", Text = $"No view for the '{controller.Model.Tab}' tab ({controller.Model.Tab}.json).", Classes = { "dim" } };
@@ -1058,7 +1083,6 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         content.Children.Add(body);
         _shellHeader = header;
         _shellBody = body;
-        var panel = new ViewNode { Type = NodeType.Panel, Id = "panel" };
         panel.Children.Add(header);
         panel.Children.Add(content);
         var data = controller.Views.Data(controller.Model.Tab);
@@ -1066,7 +1090,23 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
         _groups = SizeGroups.Measure(panel, data, _context!.Theme, GroupTextWidth);
         _builtData = _liveData = data;
         _shellNode = panel;
-        return Build(panel, "shell", data, null, tabState);
+        var shell = Build(panel, "shell", data, null, tabState);
+        _tabRow = _tabStrip.Scrolling ? shell.Q(TabStrip.RowId) : null;
+        if (_tabStrip.Scrolling && shell.Q("tabs") is { } strip)
+        {
+            // The wheel over the strip moves it a tab per notch (down or right: on).
+            strip.RegisterCallback<WheelEvent>(e =>
+            {
+                if (_tabStrip.Scroll(e.delta.y > 0 || e.delta.x > 0 ? 1 : -1))
+                {
+                    _dirty = true;
+                }
+
+                e.StopPropagation();
+            });
+        }
+
+        return shell;
     }
 
     private VisualElement? Cards(OverlayController controller)
@@ -1979,7 +2019,7 @@ public sealed class UiToolkitRenderer : IOverlayRenderer
             "bold-and-italic" => FontStyle.BoldAndItalic,
             _ => FontStyle.Normal,
         };
-        var vertical = node.Type is NodeType.Button or NodeType.Badge or NodeType.Toggle or NodeType.TextField or NodeType.Dropdown ? "Middle" : "Upper";
+        var vertical = node.Type is NodeType.Button or NodeType.Badge or NodeType.Toggle or NodeType.TextField or NodeType.Dropdown || (node.Type == NodeType.Text && node.Command is not null) ? "Middle" : "Upper"; // a clickable text (a tab) is a control too
         s.unityTextAlign = (TextAnchor)Enum.Parse(typeof(TextAnchor), vertical + resolved.TextAlign switch
         {
             "center" => "Center",

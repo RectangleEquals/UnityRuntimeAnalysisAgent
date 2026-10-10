@@ -58,6 +58,10 @@ public sealed class UguiRenderer : IOverlayRenderer
     private UguiSprites? _sprites;
     private EffectsDriver? _effects;
     private OverlayCommands? _commands;
+    private readonly TabStrip _tabStrip = new();
+    private string? _tabRowPath; // the strip's row as last built
+    private double _tabRowBuiltAt; // the row's scroll offset when it was built
+    private bool _tabsGliding;
     private IReadOnlyDictionary<string, ViewDocument> _views = new Dictionary<string, ViewDocument>();
     private readonly Dictionary<string, IReadOnlyList<string>> _dependencies = new(StringComparer.Ordinal); // the data paths each tab's view shows
     private Texture2D? _icons;
@@ -115,6 +119,7 @@ public sealed class UguiRenderer : IOverlayRenderer
         _effects = new EffectsDriver(context.Theme, context.Bundle, context.Controller.Settings.Effects);
         _presenter = new ViewPresenter(context.Theme, _fonts);
         _commands = new OverlayCommands(context.Controller, context.Log);
+        _commands.Register(TabStrip.ScrollCommand, args => _tabStrip.Scroll(args["by"] is JsonNumber by ? (int)by.GetDouble() : 0));
         _views = OverlayFiles.LoadViews(context.OverlayDir, context.Log);
         LoadIcons(context.OverlayDir);
         context.Controller.Views.Refreshed += OnRefreshed;
@@ -144,6 +149,7 @@ public sealed class UguiRenderer : IOverlayRenderer
             Rebuild(controller);
         }
 
+        GlideTabs();
         PlaceOutline(now); // after the rebuild: it goes over what the rebuild drew
     }
 
@@ -327,36 +333,36 @@ public sealed class UguiRenderer : IOverlayRenderer
         var panel = model.Docked
             ? EdgeDock.Panel(model.Edge, model.Offset, pw, ph, width, height, Token("size", "arrow", 48))
             : new OverlayRect(Math.Max(0, Math.Min(model.FloatingPosition.X, width - pw)), Math.Max(0, Math.Min(model.FloatingPosition.Y, height - ph)), pw, ph);
-        var shell = Shell(controller);
+        var shell = Shell(controller, panel.Width);
         _presenter!.CheckedIds.Clear();
         _presenter.CheckedIds.Add("tab-" + model.Tab);
         var data = controller.Views.Data(model.Tab);
         var root = _presenter!.Present(shell, data, panel.Width, panel.Height);
         Materialize(root, _root!.transform, panel.X, panel.Y, 0, 0);
+        _tabRowPath = _tabStrip.Scrolling ? _nodes.Keys.FirstOrDefault(k => k.EndsWith("/" + TabStrip.RowId, StringComparison.Ordinal)) : null;
         _sources.Add(new ElementSource("header", "header", _shellHeader!, "shell/header", data));
         _sources.Add(new ElementSource("panel", "panel/" + model.Tab, _shellBody!, "shell/content/" + (_shellBody!.Id ?? "0"), data));
         Occupy(panel.X, panel.Y, panel.Width, panel.Height);
     }
 
-    private ViewDocument Shell(OverlayController controller)
+    private ViewDocument Shell(OverlayController controller, double width)
     {
-        var tabs = new ViewNode { Type = NodeType.Stack, Id = "tabs", Classes = { "tabs" } };
-        tabs.Style["flex-direction"] = "row";
-        tabs.Style["flex-wrap"] = "wrap";
-        foreach (var tab in controller.Settings.VisibleTabs)
-        {
-            var button = new ViewNode { Type = NodeType.Text, Id = "tab-" + tab, Text = Title(tab), Classes = { "tab" }, Command = "tab.open", Args = new JsonObject { { "tab", new JsonString(tab) } } };
-            tabs.Children.Add(button);
-        }
-
+        var estop = new ViewNode { Type = NodeType.Button, Id = "estop", Text = controller.EStop.Engaged ? "E-STOP ✓" : "E-STOP", Classes = { "danger" }, Command = "estop" };
+        estop.Style["margin-left"] = "$space.2";
+        var close = new ViewNode { Type = NodeType.Button, Id = "close", Text = "×", Command = "overlay.collapse" };
+        var panel = new ViewNode { Type = NodeType.Panel, Id = "panel" };
+        var theme = _context!.Theme;
+        var available = TabStrip.Available(width, panel, new[] { estop, close }, theme, TextWidth);
+        var now = TextBox.Clock();
+        var tabs = _tabStrip.Build(controller.Settings.VisibleTabs.Select(t => (t, Title(t))).ToList(), controller.Model.Tab, available, Screen.height, theme, TextWidth, now);
+        _tabRowBuiltAt = _tabStrip.ShownAt(now);
         var header = new ViewNode { Type = NodeType.Stack, Id = "header" };
         header.Style["flex-direction"] = "row";
         header.Style["align-items"] = "center";
         header.Style["flex-shrink"] = "0";
         header.Children.Add(tabs);
-        tabs.Style["flex-grow"] = "1";
-        header.Children.Add(new ViewNode { Type = NodeType.Button, Id = "estop", Text = controller.EStop.Engaged ? "E-STOP ✓" : "E-STOP", Classes = { "danger" }, Command = "estop" });
-        header.Children.Add(new ViewNode { Type = NodeType.Button, Id = "close", Text = "×", Command = "overlay.collapse" });
+        header.Children.Add(estop);
+        header.Children.Add(close);
         var body = _views.TryGetValue(controller.Model.Tab, out var view)
             ? view.Root
             : new ViewNode { Type = NodeType.Text, Id = "missing", Text = $"No view for the '{controller.Model.Tab}' tab ({controller.Model.Tab}.json).", Classes = { "dim" } };
@@ -368,7 +374,6 @@ public sealed class UguiRenderer : IOverlayRenderer
         content.Children.Add(body);
         _shellHeader = header;
         _shellBody = body;
-        var panel = new ViewNode { Type = NodeType.Panel, Id = "panel" };
         panel.Style["width"] = "100%";
         panel.Style["height"] = "100%";
         panel.Children.Add(header);
@@ -723,7 +728,8 @@ public sealed class UguiRenderer : IOverlayRenderer
         Binder.Set(component, "color", EffectsDriver.Rgba(style.Color));
         Binder.Set(component, "raycastTarget", false);
         var centered = node.Source.Type is NodeType.Button or NodeType.Badge;
-        Binder.Set(component, "alignment", (centered ? "Middle" : node.Source.Type is NodeType.Toggle or NodeType.TextField or NodeType.Dropdown ? "Middle" : "Upper") + style.TextAlign switch
+        var middle = centered || node.Source.Type is NodeType.Toggle or NodeType.TextField or NodeType.Dropdown || (node.Source.Type == NodeType.Text && node.Source.Command is not null); // a clickable text (a tab) is a control too
+        Binder.Set(component, "alignment", (middle ? "Middle" : "Upper") + style.TextAlign switch
         {
             "center" => "Center",
             "right" => "Right",
@@ -1065,12 +1071,56 @@ public sealed class UguiRenderer : IOverlayRenderer
             // The wheel scrolls the nearest container that scrolls: this element, or the list or view it's in (a row, a
             // button in a row: taking the pointer, they also take the wheel event, which doesn't go further by itself).
             var target = Scrolls(path) ? path : ClippingAncestors(path).FirstOrDefault(Scrolls); // (a button clips its text, but doesn't scroll)
-            if (target is not null)
+            if (_tabStrip.Scrolling && path.IndexOf("/header/tabs/", StringComparison.Ordinal) >= 0)
+            {
+                // The tab strip moves a tab per notch (wheel down or right: on).
+                if (_tabStrip.Scroll(e.Scroll.y < 0 || e.Scroll.x > 0 ? 1 : -1))
+                {
+                    _dirty = true;
+                }
+            }
+            else if (target is not null)
             {
                 _presenter!.ScrollBy(target, -e.Scroll.y * 24);
                 _dirty = true;
             }
         });
+    }
+
+    // The tab strip's row glides between rebuilds: moved where it is rather than rebuilt; a rebuild once it settles
+    // brings the arrows' dimming and the hit areas up to date.
+    private void GlideTabs()
+    {
+        if (_tabRowPath is not { } path || !_tabStrip.Scrolling)
+        {
+            return;
+        }
+
+        var now = TextBox.Clock();
+        var gliding = _tabStrip.Gliding(now);
+        if (!gliding && !_tabsGliding)
+        {
+            return;
+        }
+
+        _tabsGliding = gliding;
+        var parent = path.Substring(0, path.LastIndexOf('/'));
+        if (_pool.TryGetValue(path, out var element) && element.Go != null && _bounds.TryGetValue(path, out var row) && _bounds.TryGetValue(parent, out var view))
+        {
+            Place(element, row.X + _tabRowBuiltAt - _tabStrip.ShownAt(now), row.Y, row.W, row.H, view.X, view.Y);
+        }
+
+        if (!gliding)
+        {
+            _dirty = true;
+        }
+    }
+
+    // A text's width on one line in a node's font and size.
+    private double TextWidth(ViewNode node, string text)
+    {
+        var style = _context!.Theme.Resolve(node);
+        return _fonts!.Measure(text, style.Font, style.FontSize, double.PositiveInfinity, true).Width;
     }
 
     private void Set(Action change)

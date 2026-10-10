@@ -5,6 +5,7 @@
       {
         "type": "stack",
         "class": "row",
+        "style": { "flex-wrap": "wrap", "flex-shrink": "0" },
         "children": [
           { "type": "text", "class": "heading", "text": "Log", "style": { "flex-grow": "1" } },
           { "type": "button", "text": "Debug", "command": "logs.level", "args": { "level": "debug" } },
@@ -13,13 +14,13 @@
           { "type": "button", "text": "Errors", "icon": "warning-circle", "command": "logs.level", "args": { "level": "error" } }
         ]
       },
-      { "type": "text", "class": "dim", "text": "Newest first; Unity, the loader and the agent. {logs.dropped} dropped." },
+      { "type": "text", "class": "dim", "text": "Newest first; Unity, the loader and the agent. {logs.dropped} dropped.", "style": { "flex-shrink": "0" } },
       { "type": "text", "class": "dim", "text": "Nothing at this level.", "visible": "!rows" },
       {
         "type": "list",
         "id": "log",
         "items": "rows",
-        "style": { "height": "420px" },
+        "style": { "flex-grow": "1", "min-height": "80px" },
         "template": { "type": "text", "class": "value", "text": "{@.text}", "style": { "white-space": "nowrap", "text-overflow": "ellipsis" } }
       }
     ]

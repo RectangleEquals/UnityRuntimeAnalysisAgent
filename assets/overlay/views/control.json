@@ -9,6 +9,7 @@
       {
         "type": "stack",
         "class": "row",
+        "style": { "flex-wrap": "wrap" },
         "children": [
           { "type": "button", "icon": "pause", "text": "Pause", "command": "agent.call", "args": { "method": "time.pause" }, "visible": "!time.paused" },
           { "type": "button", "icon": "play", "text": "Resume", "command": "agent.call", "args": { "method": "time.resume" }, "visible": "time.paused" },
@@ -19,6 +20,7 @@
       {
         "type": "stack",
         "class": "row",
+        "style": { "flex-wrap": "wrap" },
         "children": [
           { "type": "text", "class": "label", "text": "Speed", "style": { "margin-right": "$space.2" } },
           { "type": "button", "text": "0.25×", "command": "agent.call", "args": { "method": "time.scale", "params": { "value": 0.25 } } },
@@ -30,6 +32,7 @@
       {
         "type": "stack",
         "class": "row",
+        "style": { "flex-wrap": "wrap" },
         "children": [
           { "type": "button", "text": "Pause / resume audio", "command": "audio.toggle" },
           { "type": "button", "text": "Keep running in the background", "command": "agent.call", "args": { "method": "app.runInBackground", "params": { "value": true } }, "visible": "!app.runInBackground" },
@@ -41,6 +44,7 @@
       {
         "type": "stack",
         "class": "row",
+        "style": { "flex-wrap": "wrap" },
         "children": [
           { "type": "button", "icon": "plug", "text": "Disconnect clients", "command": "client.disconnect", "visible": "overlay.connected" },
           { "type": "button", "text": "Lower to ReadOnly+Load", "command": "agent.call", "args": { "method": "agent.setMode", "params": { "mode": "ReadOnly+Load" }, "done": "Mode lowered to ReadOnly+Load." }, "visible": "overlay.mode == Full" },

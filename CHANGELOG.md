@@ -275,3 +275,8 @@
   highlight on hover as in the UI Toolkit overlay, and the wheel over a row or one of its buttons scrolls the list;
   stray highlight bands and cut-off elements after switching tabs are gone (reused objects kept the background and
   clipping of what was drawn there before); text in the fallback font no longer has its descenders covered.
+- Overlay on small screens: when the panel's tabs would take three rows or more (two on screens 720 pixels high or
+  less), they become one row that scrolls — `<` and `>` at its sides and the mouse wheel over it glide it a tab at a
+  time, and the selected tab is always in view. Rows of buttons (Logs, Control) wrap instead of running off the panel,
+  the Logs list fills the panel instead of squeezing the rows above it, clickable texts such as tabs are centred
+  vertically like buttons, and long client lines on Status end in an ellipsis.

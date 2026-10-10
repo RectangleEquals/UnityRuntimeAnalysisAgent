@@ -3,7 +3,7 @@
     "type": "stack",
     "children": [
       { "type": "text", "class": "heading", "text": "Overlay settings" },
-      { "type": "text", "class": "dim", "text": "Saved to the agent's configuration file; most apply after the game restarts. Rest the pointer on a setting for what it does." },
+      { "type": "text", "class": "dim", "text": "Saved to the agent's configuration file; most apply after the game restarts. Rest the pointer on a setting for what it does.", "style": { "flex-shrink": "0" } },
       {
         "type": "list",
         "id": "settings",
