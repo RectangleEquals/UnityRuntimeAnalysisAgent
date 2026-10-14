@@ -119,6 +119,7 @@ public static class ConfigKeys
         new ConfigKey("Transport", "MaxFrameBytes", ConfigKind.Int, "16777216", "Largest message accepted or sent, in bytes."),
         new ConfigKey("Pump", "FrameBudgetMs", ConfigKind.Int, "4", "Main-thread time per frame for the agent's work, in milliseconds."),
         new ConfigKey("Pump", "StallMs", ConfigKind.Int, "3000", "After this long without a frame, main-thread requests fail with MAIN_THREAD_UNAVAILABLE instead of waiting."),
+        new ConfigKey("Pump", "KeepRunningInBackground", ConfigKind.Bool, "true", "Keep the game running while its window is in the background (many games stop while unfocused, which stalls the agent).").Shown("Keep Running in Background", "On: the game keeps running when you switch to another window, even if it would normally pause (Unity's Run In Background is held on, and the game's attempts to switch it off are ignored). Off: the game behaves as it normally does. A game that pauses itself (its own pause menu or time scale) still does. Applies at once.").In("General"),
         new ConfigKey("Jobs", "MaxConcurrent", ConfigKind.Int, "2", "Long-running jobs (surveys, indexes, exports) at once; more wait in a queue."),
         new ConfigKey("Handles", "Max", ConfigKind.Int, "20000", "Live object handles kept (least recently used ones are released)."),
         new ConfigKey("Instrumentation", "MaxMethods", ConfigKind.Int, "2000", "Methods instrumented at once."),

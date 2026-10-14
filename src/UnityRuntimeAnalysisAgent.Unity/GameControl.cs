@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using HarmonyLib;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityRuntimeAnalysisAgent.Core.Abstractions;
@@ -14,9 +15,22 @@ internal sealed class GameControl : IGameControl
 
     private static readonly MethodInfo? QuitWithCode = typeof(Application).GetMethod("Quit", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(int) }, null);
 
+    private const string HarmonyId = "com.github.rectangleequals.unityruntimeanalysisagent.runinbackground";
+
+    // Keeping the game running in the background: the game's own value (at start, then its writes), whether its writes
+    // are held back, and whether the patch on the setter is in place (the agent's own writes pass through it).
+    private static bool? s_gameRunInBackground;
+    private static bool s_keep;
+    private static Harmony? s_harmony;
+    [ThreadStatic] private static bool t_own;
+
     private readonly Func<Scene, SceneFacts> _facts;
 
-    public GameControl(Func<Scene, SceneFacts> facts) => _facts = facts;
+    public GameControl(Func<Scene, SceneFacts> facts)
+    {
+        _facts = facts;
+        s_gameRunInBackground ??= Application.runInBackground;
+    }
 
     public TimeFacts ReadTime() => new()
     {
@@ -50,6 +64,8 @@ internal sealed class GameControl : IGameControl
         ConsoleLogPath = ConsoleLogPath?.GetValue(null, null) as string,
         IsFocused = Application.isFocused,
         RunInBackground = Application.runInBackground,
+        GameRunInBackground = s_gameRunInBackground,
+        KeptRunning = s_keep,
         ScreenWidth = Screen.width,
         ScreenHeight = Screen.height,
         FullScreen = Screen.fullScreen,
@@ -66,7 +82,72 @@ internal sealed class GameControl : IGameControl
     public bool RunInBackground
     {
         get => Application.runInBackground;
-        set => Application.runInBackground = value;
+        set => Write(value);
+    }
+
+    public bool KeepRunning
+    {
+        get => s_keep;
+        set
+        {
+            if (value)
+            {
+                Patch();
+                s_keep = true;
+                Write(true);
+            }
+            else if (s_keep)
+            {
+                s_keep = false;
+                Write(s_gameRunInBackground ?? Application.runInBackground); // the game's own choice again
+            }
+        }
+    }
+
+    // The game's writes to Application.runInBackground: recorded, and held back while the agent keeps it running (a game
+    // that switches it off as its window loses focus would otherwise stop before the agent's next frame could undo it).
+    private static bool RunInBackgroundPrefix(bool value)
+    {
+        if (t_own)
+        {
+            return true;
+        }
+
+        s_gameRunInBackground = value;
+        return !s_keep;
+    }
+
+    private static void Patch()
+    {
+        if (s_harmony is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            s_harmony = new Harmony(HarmonyId);
+            var setter = typeof(Application).GetProperty(nameof(Application.runInBackground))!.GetSetMethod();
+            s_harmony.Patch(setter, prefix: new HarmonyMethod(typeof(GameControl).GetMethod(nameof(RunInBackgroundPrefix), BindingFlags.NonPublic | BindingFlags.Static)));
+        }
+        catch (Exception)
+        {
+            // Without the patch the host's per-frame check still turns it back on (from the next frame).
+            s_harmony?.UnpatchSelf();
+        }
+    }
+
+    private static void Write(bool value)
+    {
+        t_own = true;
+        try
+        {
+            Application.runInBackground = value;
+        }
+        finally
+        {
+            t_own = false;
+        }
     }
 
     // Application.Quit(int) arrived after 2018.1; without it the exit code is Unity's own.

@@ -211,6 +211,30 @@ public sealed class AgentHost : IDisposable
 
         Events.EmittedKinds.Add(EventKinds.InputSession);
         Pump.Ticked += _ => Input.Tick();
+
+        // A game that stops while its window is in the background stalls every main-thread request: keep it running
+        // (Pump.KeepRunningInBackground). The control holds back the game's own writes; each frame catches any it missed.
+        if (unity?.Control is { } background)
+        {
+            if (_config.KeepRunningInBackground)
+            {
+                var pauses = background.ReadApp().GameRunInBackground == false;
+                background.KeepRunning = true;
+                if (pauses)
+                {
+                    Log.Info("This game pauses while its window is in the background; the agent keeps it running (setting Pump.KeepRunningInBackground).");
+                }
+            }
+
+            Pump.Ticked += _ =>
+            {
+                if (background.KeepRunning && !background.RunInBackground)
+                {
+                    background.RunInBackground = true;
+                }
+            };
+        }
+
         Dispatcher.Register(new InputService(Input, Pump, Jobs));
 
         var overlaySettings = OverlaySettings.Read(config);
@@ -223,6 +247,10 @@ public sealed class AgentHost : IDisposable
         {
             Overlay = CreateOverlay(overlaySettings, control);
             Overlay.Input = Input;
+            if (unity?.Control is { } keeper)
+            {
+                Overlay.KeepRunningInBackground = on => keeper.KeepRunning = on;
+            }
             Dispatcher.Register(new OverlayService(Overlay, Data, Pump));
         }
     }

@@ -14,6 +14,7 @@ agent logs a warning saying so.
 | `Transport.MaxFrameBytes` | `16777216` | Largest message accepted or sent, in bytes. |
 | `Pump.FrameBudgetMs` | `4` | Main-thread time per frame for the agent's work, in milliseconds. |
 | `Pump.StallMs` | `3000` | After this long without a frame, main-thread requests fail with MAIN_THREAD_UNAVAILABLE instead of waiting. |
+| `Pump.KeepRunningInBackground` | `true` | Keep the game running while its window is in the background. Many games stop every frame while unfocused (Unity's Run In Background is off), which stalls the agent's main-thread work; on, the agent holds Run In Background on and ignores the game's attempts to switch it off. A game that pauses itself (its own pause menu or time scale) still does. Applies at once (also from the overlay's Settings tab). |
 | `Jobs.MaxConcurrent` | `2` | Long-running jobs (surveys, indexes, exports) at once; more wait in a queue. |
 | `Handles.Max` | `20000` | Live object handles kept (least recently used ones are released). |
 | `Instrumentation.MaxMethods` | `2000` | Methods instrumented at once. |

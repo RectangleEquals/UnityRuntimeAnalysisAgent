@@ -2,7 +2,7 @@
 
 ## 0.1.0-dev (unreleased)
 - Repository and toolchain scaffolding: solution, projects, central package management.
-- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.8`).
+- Shared protocol consumed through the `external/protocol` submodule (now `protocol-v0.1.0-dev.10`).
 - Transport, handshake and discovery: framed connections over a named pipe (restricted to the current user where the
   runtime allows) or a loopback TCP fallback, the token-authenticated `hello` handshake, `ping`, `agent.info`,
   `agent.capabilities`, `cancel` and event subscriptions, and an atomically written discovery file.
@@ -297,3 +297,10 @@
   virtual keys, mouse buttons, mouse movement and wheel reach the actions the player's control maps bind them to (pad
   buttons and sticks too, through a connected gamepad's maps). `input.capabilities` lists the game's actions. Any real
   input through any of the game's input stacks takes over.
+- Games that pause in the background (protocol `0.1.0-dev.10`): many games stop every frame while their window is
+  unfocused, which stalled the agent's main-thread requests (`MAIN_THREAD_UNAVAILABLE`) whenever the player switched
+  windows. The agent now keeps the game running: Unity's Run In Background is held on and the game's own attempts to
+  switch it off are recorded instead of applied. `app.info` reports the game's own setting (`gameRunInBackground`)
+  and whether the agent is keeping it running (`keptRunning`); `app.runInBackground` with false lets the game pause
+  again. New setting `Pump.KeepRunningInBackground` (default on, applies at once, also in the overlay's Settings tab).
+  A game that pauses itself (its own pause menu or time scale) still does.

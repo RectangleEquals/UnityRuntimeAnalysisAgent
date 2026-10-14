@@ -116,13 +116,17 @@ public sealed partial class OverlayController
     {
         "Overlay.WheelLatch", "Overlay.DragScrollStartSpeed", "Overlay.DragScrollTopSpeed", "Overlay.DragScrollRampDistance",
         "Input.Enabled", "Input.Countdown", "Input.MaxSessionMs", "Input.TakeoverKey", "Input.TakeoverPad",
+        "Pump.KeepRunningInBackground",
     };
 
     /// <summary>The input sessions, whose settings change here too (set by the host).</summary>
     public InputSessions? Input { get; set; }
 
-    // The settings the Settings tab shows: the overlay's and input driving's.
-    private static bool InSettingsTab(ConfigKey key) => key.Section is "Overlay" or "Input";
+    /// <summary>Switches keeping the game running in the background (set by the host when it can).</summary>
+    public Action<bool>? KeepRunningInBackground { get; set; }
+
+    // The settings the Settings tab shows: the overlay's, input driving's, and any other with a section of the tab.
+    private static bool InSettingsTab(ConfigKey key) => key.Section is "Overlay" or "Input" || key.Group is not null;
 
     /// <summary>
     /// Changes overlay settings (<c>overlay.setSettings</c>): for this session only (live settings only: nothing is saved),
@@ -224,6 +228,9 @@ public sealed partial class OverlayController
                 return true;
             case "Input.Enabled" or "Input.Countdown" or "Input.MaxSessionMs" or "Input.TakeoverKey" or "Input.TakeoverPad" when Input is { } input:
                 input.Settings.Apply(fullKey.Substring("Input.".Length), value);
+                return true;
+            case "Pump.KeepRunningInBackground" when KeepRunningInBackground is { } keep:
+                keep(string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase));
                 return true;
             default:
                 return false;

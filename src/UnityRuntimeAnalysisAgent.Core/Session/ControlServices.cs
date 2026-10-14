@@ -439,7 +439,7 @@ internal sealed class ControlServices
         {
             ProductName = a.ProductName, CompanyName = a.CompanyName, Version = a.Version, UnityVersion = a.UnityVersion, Platform = a.Platform,
             DataPath = a.DataPath, PersistentDataPath = a.PersistentDataPath, ConsoleLogPath = a.ConsoleLogPath, IsFocused = a.IsFocused,
-            RunInBackground = a.RunInBackground, Screen = new ScreenInfo { Width = a.ScreenWidth, Height = a.ScreenHeight, FullScreen = a.FullScreen },
+            RunInBackground = a.RunInBackground, GameRunInBackground = a.GameRunInBackground, KeptRunning = a.KeptRunning, Screen = new ScreenInfo { Width = a.ScreenWidth, Height = a.ScreenHeight, FullScreen = a.FullScreen },
             QualityLevel = a.QualityLevel, GraphicsDevice = a.GraphicsDevice,
         };
     }
@@ -448,6 +448,7 @@ internal sealed class ControlServices
     public ProtocolMessage AppRunInBackground(RequestContext context, AppRunInBackgroundParams p)
     {
         var previous = Control.RunInBackground;
+        Control.KeepRunning = p.Value; // false: the game may pause again (and set its own value); true: held on
         Control.RunInBackground = p.Value;
         return new AppRunInBackgroundResult { Previous = previous, Current = Control.RunInBackground };
     }

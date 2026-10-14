@@ -70,6 +70,15 @@ public sealed class AppFacts
     /// <summary><c>Application.runInBackground</c>.</summary>
     public bool RunInBackground { get; set; }
 
+    /// <summary>
+    /// The game's own <c>Application.runInBackground</c>: its value when the agent started, or the last one the game set
+    /// since (false: the game pauses whenever its window loses focus). Null when unknown.
+    /// </summary>
+    public bool? GameRunInBackground { get; set; }
+
+    /// <summary>Whether the agent is keeping the game running in the background (<see cref="IGameControl.KeepRunning"/>).</summary>
+    public bool KeptRunning { get; set; }
+
     /// <summary><c>Screen.width</c>.</summary>
     public int ScreenWidth { get; set; }
 
@@ -113,6 +122,13 @@ public interface IGameControl
 
     /// <summary><c>Application.runInBackground</c>.</summary>
     bool RunInBackground { get; set; }
+
+    /// <summary>
+    /// Keeps the game running while its window is in the background: <c>Application.runInBackground</c> is held on and
+    /// the game's own writes to it are recorded (<see cref="AppFacts.GameRunInBackground"/>) instead of applied. Off gives
+    /// the game its own value back.
+    /// </summary>
+    bool KeepRunning { get; set; }
 
     /// <summary><c>AudioListener.pause</c>: pauses the game's audio (sources set to ignore it keep playing).</summary>
     bool AudioPaused { get; set; }

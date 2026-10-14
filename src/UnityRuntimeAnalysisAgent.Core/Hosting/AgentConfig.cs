@@ -42,6 +42,9 @@ public sealed class AgentConfig
     /// <summary>Config key of <see cref="StallMs"/>.</summary>
     public const string StallMsKey = "Pump.StallMs";
 
+    /// <summary>Config key of <see cref="KeepRunningInBackground"/>.</summary>
+    public const string KeepRunningInBackgroundKey = "Pump.KeepRunningInBackground";
+
     /// <summary>Config key of <see cref="MaxConcurrentJobs"/>.</summary>
     public const string MaxConcurrentJobsKey = "Jobs.MaxConcurrent";
 
@@ -92,6 +95,12 @@ public sealed class AgentConfig
 
     /// <summary>How long without a frame before the main thread counts as stalled, in milliseconds (default 3000).</summary>
     public int StallMs { get; set; } = 3000;
+
+    /// <summary>
+    /// Keep the game running while its window is in the background (default true): many games stop every frame while
+    /// unfocused, which stalls the agent's main-thread work.
+    /// </summary>
+    public bool KeepRunningInBackground { get; set; } = true;
 
     /// <summary>CPU-heavy jobs running at once (default 2).</summary>
     public int MaxConcurrentJobs { get; set; } = 2;
@@ -196,6 +205,7 @@ public sealed class AgentConfig
 
         config.FrameBudgetMs = config.ReadInt(source, FrameBudgetMsKey, config.FrameBudgetMs, 1, 100);
         config.StallMs = config.ReadInt(source, StallMsKey, config.StallMs, 250, 600_000);
+        config.KeepRunningInBackground = config.ReadBool(source, KeepRunningInBackgroundKey, config.KeepRunningInBackground);
         config.MaxConcurrentJobs = config.ReadInt(source, MaxConcurrentJobsKey, config.MaxConcurrentJobs, 1, 16);
         config.MaxEventQueueBytes = config.ReadInt(source, MaxEventQueueBytesKey, config.MaxEventQueueBytes, 64 * 1024, 256 * 1024 * 1024);
         config.MaxHandles = config.ReadInt(source, MaxHandlesKey, config.MaxHandles, 100, 1_000_000);
