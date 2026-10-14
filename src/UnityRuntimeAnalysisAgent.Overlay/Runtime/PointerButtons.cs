@@ -69,8 +69,8 @@ public static class PointerButtons
         }
     }
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int key);
+    // The system user32 (see User32: a game may ship its own user32.dll in its Plugins folder).
+    private static short GetAsyncKeyState(int key) => User32.GetAsyncKeyState(key);
 
     /// <summary>Whether the left or right mouse button is held.</summary>
     public static bool Held()

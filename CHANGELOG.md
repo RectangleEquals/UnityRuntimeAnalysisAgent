@@ -304,3 +304,8 @@
   and whether the agent is keeping it running (`keptRunning`); `app.runInBackground` with false lets the game pause
   again. New setting `Pump.KeepRunningInBackground` (default on, applies at once, also in the overlay's Settings tab).
   A game that pauses itself (its own pause menu or time scale) still does.
+- Overlay text boxes: Enter, Backspace, Escape, the arrows, Home/End, Page Up/Down, Delete and the Ctrl shortcuts work in
+  games on Input System 1.4 and later (its key reads became extension methods, so only typed characters came
+  through), and the Windows keyboard hook binds to the system's own user32 (a game that ships a file named
+  `user32.dll` in its Plugins folder broke the hook). A hook that can't start is reported as a warning.
+

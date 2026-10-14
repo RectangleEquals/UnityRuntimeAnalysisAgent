@@ -804,14 +804,39 @@ public sealed class KeyboardCapture : IDisposable
         private static bool Pressed(object keyboard, object eventPtr, string key)
         {
             var control = keyboard.GetType().GetProperty(key)?.GetValue(keyboard, null);
-            var read = control?.GetType().GetMethods().FirstOrDefault(m => m.Name == "ReadValueFromEvent" && m.GetParameters().Length == 2);
-            if (read is null)
+            return control is not null && Reader(control.GetType()) is { } read && read(control, eventPtr) is float value && value >= 0.5f;
+        }
+
+        // How a control's value is read from an event, per control type: the instance ReadValueFromEvent(eventPtr, out
+        // value) of early versions, else (1.x, where it became an extension method) the static
+        // InputControlExtensions.ReadValueFromEventAsObject(control, eventPtr). Null when neither exists.
+        private static readonly Dictionary<Type, Func<object, object, object?>?> Readers = new();
+
+        private static Func<object, object, object?>? Reader(Type controlType)
+        {
+            if (Readers.TryGetValue(controlType, out var known))
             {
-                return false;
+                return known;
             }
 
-            var args = new[] { eventPtr, null };
-            return read.Invoke(control, args) is true && args[1] is float value && value >= 0.5f;
+            Func<object, object, object?>? reader = null;
+            var instance = controlType.GetMethods().FirstOrDefault(m => m.Name == "ReadValueFromEvent" && m.GetParameters().Length == 2 && !m.IsStatic);
+            if (instance is not null)
+            {
+                reader = (control, eventPtr) =>
+                {
+                    var args = new[] { eventPtr, null };
+                    return instance.Invoke(control, args) is true ? args[1] : null;
+                };
+            }
+            else if (controlType.Assembly.GetType(controlType.Namespace!.Replace(".Controls", string.Empty) + ".InputControlExtensions")
+                         ?.GetMethod("ReadValueFromEventAsObject", BindingFlags.Public | BindingFlags.Static) is { } asObject)
+            {
+                reader = (control, eventPtr) => asObject.Invoke(null, new[] { control, eventPtr });
+            }
+
+            Readers[controlType] = reader;
+            return reader;
         }
 
         // The compiled listener's target (the listener is built before the source exists).
@@ -881,11 +906,21 @@ public sealed class KeyboardCapture : IDisposable
                 s_current = this;
                 var ready = new ManualResetEvent(false);
                 var error = 0;
+                Exception? installError = null;
                 _thread = new Thread(() =>
                 {
                     _threadId = GetCurrentThreadId();
-                    _handle = SetWindowsHookEx(WhKeyboardLl, s_proc, GetModuleHandle(null), 0);
-                    error = _handle == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
+                    try
+                    {
+                        _handle = SetWindowsHookEx(WhKeyboardLl, Marshal.GetFunctionPointerForDelegate(s_proc), GetModuleHandle(null), 0);
+                        error = _handle == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
+                    }
+                    catch (Exception e)
+                    {
+                        // Not on a thread's unhandled path: the install reports it as a warning below.
+                        installError = e;
+                    }
+
                     ready.Set();
                     if (_handle == IntPtr.Zero)
                     {
@@ -893,8 +928,16 @@ public sealed class KeyboardCapture : IDisposable
                     }
 
                     // The hook's callbacks run in this loop; Uninstall posts WM_QUIT to end it.
-                    while (GetMessage(out _, IntPtr.Zero, 0, 0) > 0)
+                    var message = Marshal.AllocHGlobal(64); // MSG
+                    try
                     {
+                        while (GetMessage(message, IntPtr.Zero, 0, 0) > 0)
+                        {
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(message);
                     }
 
                     UnhookWindowsHookEx(_handle);
@@ -906,6 +949,13 @@ public sealed class KeyboardCapture : IDisposable
                 };
                 _thread.Start();
                 ready.WaitOne(2000);
+                if (installError is not null)
+                {
+                    _log.Warning($"The Windows keyboard hook isn't available: {installError.Message}");
+                    _thread = null;
+                    return false;
+                }
+
                 if (_handle == IntPtr.Zero)
                 {
                     _log.Warning($"The Windows keyboard hook couldn't be installed (error {error}); Unity's input is still held back.");
@@ -1078,55 +1128,34 @@ public sealed class KeyboardCapture : IDisposable
 
         private static bool IsModifier(uint vk) => vk is 0x10 or 0x11 or 0x12 or 0x14 or (>= 0xA0 and <= 0xA5) or 0x5B or 0x5C;
 
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc proc, IntPtr module, uint threadId);
+        // user32 goes through User32 (the system copy, never one a game ships in its Plugins folder).
+        private static IntPtr SetWindowsHookEx(int idHook, IntPtr proc, IntPtr module, uint threadId) => User32.SetWindowsHookEx(idHook, proc, module, threadId);
 
-        [DllImport("user32.dll")]
-        private static extern bool UnhookWindowsHookEx(IntPtr hook);
+        private static bool UnhookWindowsHookEx(IntPtr hook) => User32.UnhookWindowsHookEx(hook);
 
-        [DllImport("user32.dll")]
-        private static extern int GetMessage(out Msg message, IntPtr window, uint first, uint last);
+        private static int GetMessage(IntPtr message, IntPtr window, uint first, uint last) => User32.GetMessage(message, window, first, last);
 
-        [DllImport("user32.dll")]
-        private static extern bool PostThreadMessage(uint threadId, uint message, IntPtr wParam, IntPtr lParam);
+        private static bool PostThreadMessage(uint threadId, uint message, IntPtr wParam, IntPtr lParam) => User32.PostThreadMessage(threadId, message, wParam, lParam);
+
+        private static IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr message, IntPtr data) => User32.CallNextHookEx(hook, code, message, data);
+
+        private static IntPtr GetForegroundWindow() => User32.GetForegroundWindow();
+
+        private static uint GetWindowThreadProcessId(IntPtr window, out uint processId) => User32.GetWindowThreadProcessId(window, out processId);
+
+        private static short GetAsyncKeyState(int key) => User32.GetAsyncKeyState(key);
+
+        private static short GetKeyState(int key) => User32.GetKeyState(key);
+
+        private static IntPtr GetKeyboardLayout(uint threadId) => User32.GetKeyboardLayout(threadId);
+
+        private static int ToUnicodeEx(uint key, uint scan, byte[] state, StringBuilder buffer, int size, uint flags, IntPtr layout) =>
+            User32.ToUnicodeEx(key, scan, state, buffer, size, flags, layout);
 
         [DllImport("kernel32.dll")]
         private static extern uint GetCurrentThreadId();
 
-        [StructLayout(LayoutKind.Sequential)]
-        private struct Msg
-        {
-            public IntPtr Window;
-            public uint Message;
-            public IntPtr WParam;
-            public IntPtr LParam;
-            public uint Time;
-            public int X;
-            public int Y;
-        }
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr message, IntPtr data);
-
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr GetModuleHandle(string? name);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-
-        [DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
-
-        [DllImport("user32.dll")]
-        private static extern short GetAsyncKeyState(int key);
-
-        [DllImport("user32.dll")]
-        private static extern short GetKeyState(int key);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetKeyboardLayout(uint threadId);
-
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        private static extern int ToUnicodeEx(uint key, uint scan, byte[] state, StringBuilder buffer, int size, uint flags, IntPtr layout);
     }
 }
