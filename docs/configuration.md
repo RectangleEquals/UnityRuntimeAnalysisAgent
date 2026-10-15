@@ -49,6 +49,7 @@ agent logs a warning saying so.
 | `Overlay.DragScrollRampDistance` | `5` | How far past the text box's edge, in line heights, drag-scrolling reaches its top speed; in between the speed follows an ease-out quart curve (it rises quickly, then levels off). From `0.5` to `15`; applies at once. |
 | `Overlay.BlockWorldInput` | `false` | Keep mouse clicks over the overlay from reaching the game world (the Input Manager's mouse-button queries; games that only use the Input System package aren't covered). |
 | `Overlay.ForceCursorWhenExpanded` | `true` | Show and free the mouse cursor while the overlay is expanded. |
+| `Overlay.ForceCursorForPrompts` | `true` | Show and free the mouse cursor while a prompt waits for an answer, even on screens where the game hides or locks it; the game gets its own cursor back once nothing waits. Applies at once. |
 | `Overlay.InspectorStartsLocked` | `true` | The inspector starts locked (no edits until unlocked). |
 | `Overlay.LocalTimeControl` | `true` | Allow pausing and stepping the game from the overlay. |
 | `Overlay.EStopPauses` | `false` | E-STOP also pauses the game. |

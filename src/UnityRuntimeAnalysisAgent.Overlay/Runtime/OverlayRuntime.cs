@@ -419,8 +419,11 @@ public sealed class OverlayRuntime : IDisposable
     // While expanded (when configured), the cursor is shown and free; the game's own settings come back on collapse.
     private void Cursor()
     {
+        // Shown and free while the panel is open, and while a prompt waits (a game that hides or locks the cursor, e.g. on
+        // a "press to continue" screen, would otherwise leave the answer unclickable).
         var expanded = _controller.Model.State == OverlayVisibility.Expanded && _controller.Settings.ForceCursorWhenExpanded;
-        if (expanded)
+        var asking = _controller.Settings.ForceCursorForPrompts && _controller.Model.State != OverlayVisibility.Hidden && _controller.Prompts.Pending.Count > 0;
+        if (expanded || asking)
         {
             _cursor?.Hold();
         }

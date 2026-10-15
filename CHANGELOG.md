@@ -308,4 +308,7 @@
   games on Input System 1.4 and later (its key reads became extension methods, so only typed characters came
   through), and the Windows keyboard hook binds to the system's own user32 (a game that ships a file named
   `user32.dll` in its Plugins folder broke the hook). A hook that can't start is reported as a warning.
+- Overlay prompts can be answered on screens where the game hides or locks the cursor (a "press to continue" screen,
+  gameplay with mouse-look): while a prompt waits, the cursor is shown and free, and the game gets its own cursor back
+  once nothing waits. New setting `Overlay.ForceCursorForPrompts` (default on, applies at once).
 

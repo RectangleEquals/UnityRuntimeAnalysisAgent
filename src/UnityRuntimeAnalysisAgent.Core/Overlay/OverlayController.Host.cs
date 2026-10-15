@@ -116,7 +116,7 @@ public sealed partial class OverlayController
     {
         "Overlay.WheelLatch", "Overlay.DragScrollStartSpeed", "Overlay.DragScrollTopSpeed", "Overlay.DragScrollRampDistance",
         "Input.Enabled", "Input.Countdown", "Input.MaxSessionMs", "Input.TakeoverKey", "Input.TakeoverPad",
-        "Pump.KeepRunningInBackground",
+        "Pump.KeepRunningInBackground", "Overlay.ForceCursorForPrompts",
     };
 
     /// <summary>The input sessions, whose settings change here too (set by the host).</summary>
@@ -222,6 +222,9 @@ public sealed partial class OverlayController
                 return true;
             case "Overlay.DragScrollTopSpeed":
                 Settings.DragScrollTopSpeed = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                return true;
+            case "Overlay.ForceCursorForPrompts":
+                Settings.ForceCursorForPrompts = string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase);
                 return true;
             case "Overlay.DragScrollRampDistance":
                 Settings.DragScrollRampDistance = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);

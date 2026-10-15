@@ -141,6 +141,9 @@ public sealed class OverlaySettings
     /// <summary>Show and free the cursor while expanded.</summary>
     public bool ForceCursorWhenExpanded { get; set; } = true;
 
+    /// <summary>Show and free the cursor while a prompt waits for an answer.</summary>
+    public bool ForceCursorForPrompts { get; set; } = true;
+
     /// <summary>The Inspector starts locked.</summary>
     public bool InspectorStartsLocked { get; set; } = true;
 
@@ -209,6 +212,7 @@ public sealed class OverlaySettings
         s.DragScrollTopSpeed = s.Number(source, "DragScrollTopSpeed", s.DragScrollTopSpeed, 30, 100);
         s.DragScrollRampDistance = s.Number(source, "DragScrollRampDistance", s.DragScrollRampDistance, 0.5, 15);
         s.ForceCursorWhenExpanded = s.Bool(source, "ForceCursorWhenExpanded", s.ForceCursorWhenExpanded);
+        s.ForceCursorForPrompts = s.Bool(source, "ForceCursorForPrompts", s.ForceCursorForPrompts);
         s.InspectorStartsLocked = s.Bool(source, "InspectorStartsLocked", s.InspectorStartsLocked);
         s.LocalTimeControl = s.Bool(source, "LocalTimeControl", s.LocalTimeControl);
         s.EStopPauses = s.Bool(source, "EStopPauses", s.EStopPauses);
